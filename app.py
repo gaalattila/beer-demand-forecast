@@ -70,10 +70,21 @@ if uploaded_file:
 
             # --- Forecast Plot ---
             st.subheader("📈 Actual vs Predicted Sales")
+            # Debug: Check data integrity
+            if df["units_sold"].isna().any() or df["predicted"].isna().any():
+                st.warning("NaN values detected in units_sold or predicted. Filling with mean for plotting.")
+                df["units_sold"] = df["units_sold"].fillna(df["units_sold"].mean())
+                df["predicted"] = df["predicted"].fillna(df["predicted"].mean())
+            st.write(f"Debug: units_sold - min: {df['units_sold'].min()}, max: {df['units_sold'].max()}, mean: {df['units_sold'].mean():.2f}")
+            st.write(f"Debug: predicted - min: {df['predicted'].min()}, max: {df['predicted'].max()}, mean: {df['predicted'].mean():.2f}")
+
             fig1, ax1 = plt.subplots(figsize=(14, 4))
-            sns.lineplot(data=df, x="date", y="units_sold", label="Actual", ax=ax1)
-            sns.lineplot(data=df, x="date", y="predicted", label="Predicted", ax=ax1)
-            ax1.set_ylabel("Units Sold")
+            sns.lineplot(data=df, x="date", y="units_sold", label="Actual Sales", ax=ax1, color="#1f77b4", linewidth=2.5)
+            sns.lineplot(data=df, x="date", y="predicted", label="Predicted Sales", ax=ax1, color="#ff7f0e", linestyle="--", linewidth=2.5)
+            ax1.set_ylabel("Units")
+            ax1.set_title("Actual vs Predicted Sales")
+            ax1.legend()
+            plt.tight_layout()
             st.pyplot(fig1)
 
             # --- Anomalies ---
