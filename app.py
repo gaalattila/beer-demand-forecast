@@ -6,6 +6,9 @@ import seaborn as sns
 from xgboost import XGBRegressor
 from sklearn.metrics import mean_absolute_error
 
+# Set Matplotlib dark theme for Chart.js-like visuals
+plt.style.use("dark_background")
+
 st.set_page_config(page_title="🍺 Beer Forecast & Root Cause Analyzer", layout="wide")
 st.title("🍺 Beer Demand Forecast & Anomaly Detection")
 
@@ -83,9 +86,11 @@ if uploaded_file:
             fig1, ax1 = plt.subplots(figsize=(14, 4))
             sns.lineplot(data=df, x="date", y="units_sold", label="Actual Sales", ax=ax1, color="#1f77b4", linewidth=3, alpha=0.8)
             sns.lineplot(data=df, x="date", y="predicted", label="Predicted Sales", ax=ax1, color="#ff7f0e", linestyle="--", linewidth=3, alpha=0.8)
-            ax1.set_ylabel("Units")
-            ax1.set_title("Actual vs Predicted Sales")
-            ax1.legend()
+            ax1.set_ylabel("Units", color="#ffffff", fontsize=12)
+            ax1.set_title("Actual vs Predicted Sales", color="#ffffff", fontsize=16)
+            ax1.tick_params(axis="x", colors="#ffffff", rotation=45)
+            ax1.tick_params(axis="y", colors="#ffffff")
+            ax1.legend(labelcolor="#ffffff")
             plt.tight_layout()
             st.pyplot(fig1)
 
@@ -98,9 +103,14 @@ if uploaded_file:
 
             if not filtered.empty:
                 fig2, ax2 = plt.subplots(figsize=(14, 4))
-                sns.lineplot(data=df, x="date", y="units_sold", label="Actual", ax=ax2)
+                sns.lineplot(data=df, x="date", y="units_sold", label="Actual Sales", ax=ax2, color="#1f77b4", linewidth=3, alpha=0.8)
                 sns.scatterplot(data=filtered, x="date", y="units_sold", color="red", label="Anomaly", s=100, marker="X", ax=ax2)
-                ax2.set_title("Filtered Anomalies")
+                ax2.set_title("Filtered Anomalies", color="#ffffff", fontsize=16)
+                ax2.set_ylabel("Units", color="#ffffff", fontsize=12)
+                ax2.tick_params(axis="x", colors="#ffffff", rotation=45)
+                ax2.tick_params(axis="y", colors="#ffffff")
+                ax2.legend(labelcolor="#ffffff")
+                plt.tight_layout()
                 st.pyplot(fig2)
 
                 st.dataframe(filtered[["date", "units_sold", "predicted", "root_cause_hint"]])
@@ -110,11 +120,15 @@ if uploaded_file:
             # --- Stock vs Demand Plot ---
             st.subheader("📦 Stock Levels vs Predicted Demand")
             fig4, ax4 = plt.subplots(figsize=(14, 4))
-            sns.lineplot(data=df, x="date", y="units_sold", label="Actual Sales", ax=ax4, color="#1f77b4")
-            sns.lineplot(data=df, x="date", y="predicted", label="Predicted Demand", ax=ax4, color="#ff7f0e", linestyle="--")
-            sns.lineplot(data=df, x="date", y="stock_level", label="Stock Level", ax=ax4, color="#2ca02c")
-            ax4.set_title("Stock Levels vs Actual and Predicted Demand")
-            ax4.set_ylabel("Units")
+            sns.lineplot(data=df, x="date", y="units_sold", label="Actual Sales", ax=ax4, color="#1f77b4", linewidth=3, alpha=0.8)
+            sns.lineplot(data=df, x="date", y="predicted", label="Predicted Demand", ax=ax4, color="#ff7f0e", linestyle="--", linewidth=3, alpha=0.8)
+            sns.lineplot(data=df, x="date", y="stock_level", label="Stock Level", ax=ax4, color="#2ca02c", linewidth=3, alpha=0.8)
+            ax4.set_title("Stock Levels vs Actual and Predicted Demand", color="#ffffff", fontsize=16)
+            ax4.set_ylabel("Units", color="#ffffff", fontsize=12)
+            ax4.tick_params(axis="x", colors="#ffffff", rotation=45)
+            ax4.tick_params(axis="y", colors="#ffffff")
+            ax4.legend(labelcolor="#ffffff")
+            plt.tight_layout()
             st.pyplot(fig4)
 
             # --- Reorder Recommendations ---
@@ -149,7 +163,13 @@ if uploaded_file:
 
             fig3, ax3 = plt.subplots(figsize=(10, 5))
             sns.barplot(data=importance_df, x="importance", y="feature", hue="category", ax=ax3)
-            ax3.set_title("Feature Importance")
+            ax3.set_title("Feature Importance", color="#ffffff", fontsize=16)
+            ax3.set_xlabel("Importance", color="#ffffff", fontsize=12)
+            ax3.set_ylabel("Feature", color="#ffffff", fontsize=12)
+            ax3.tick_params(axis="x", colors="#ffffff")
+            ax3.tick_params(axis="y", colors="#ffffff")
+            ax3.legend(labelcolor="#ffffff")
+            plt.tight_layout()
             st.pyplot(fig3)
             with st.expander("📄 Feature Importance Table"):
                 st.dataframe(importance_df)
