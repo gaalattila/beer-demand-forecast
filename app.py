@@ -85,7 +85,7 @@ if uploaded_file:
             if not filtered.empty:
                 fig2, ax2 = plt.subplots(figsize=(14, 4))
                 sns.lineplot(data=df, x="date", y="units_sold", label="Actual", ax=ax2)
-                sns.scatterplot(data=filtered, x="date", y="units_sold", color="red", label="Anomaly", s=100, marker "X", ax=ax2)
+                sns.scatterplot(data=filtered, x="date", y="units_sold", color="red", label="Anomaly", s=100, marker="X", ax=ax2)
                 ax2.set_title("Filtered Anomalies")
                 st.pyplot(fig2)
 
@@ -155,5 +155,3 @@ if uploaded_file:
 
 else:
     st.info("Please upload the raw beer sales dataset to get started.")
-
-
