@@ -4,6 +4,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 from xgboost import XGBRegressor
+from sklearn.metrics import mean_absolute_error
 
 st.set_page_config(page_title="🍺 Beer Forecast & Root Cause Analyzer", layout="wide")
 st.title("🍺 Beer Demand Forecast & Anomaly Detection")
@@ -36,7 +37,7 @@ if uploaded_file:
             X = df[features]
             y = df["units_sold"]
 
-            model = XGBRegressor(n_estimators=100, max_depth=3)
+            model = XGBRegressor(n_estimators=100, max_depth=2, reg_alpha=0.1)
             model.fit(X, y)
             df["predicted"] = model.predict(X)
 
@@ -77,10 +78,11 @@ if uploaded_file:
                 df["predicted"] = df["predicted"].fillna(df["predicted"].mean())
             st.write(f"Debug: units_sold - min: {df['units_sold'].min()}, max: {df['units_sold'].max()}, mean: {df['units_sold'].mean():.2f}")
             st.write(f"Debug: predicted - min: {df['predicted'].min()}, max: {df['predicted'].max()}, mean: {df['predicted'].mean():.2f}")
+            st.write(f"Debug: Mean Absolute Error (MAE) between units_sold and predicted: {mean_absolute_error(df['units_sold'], df['predicted']):.2f}")
 
             fig1, ax1 = plt.subplots(figsize=(14, 4))
-            sns.lineplot(data=df, x="date", y="units_sold", label="Actual Sales", ax=ax1, color="#1f77b4", linewidth=2.5)
-            sns.lineplot(data=df, x="date", y="predicted", label="Predicted Sales", ax=ax1, color="#ff7f0e", linestyle="--", linewidth=2.5)
+            sns.lineplot(data=df, x="date", y="units_sold", label="Actual Sales", ax=ax1, color="#1f77b4", linewidth=3, alpha=0.8)
+            sns.lineplot(data=df, x="date", y="predicted", label="Predicted Sales", ax=ax1, color="#ff7f0e", linestyle="--", linewidth=3, alpha=0.8)
             ax1.set_ylabel("Units")
             ax1.set_title("Actual vs Predicted Sales")
             ax1.legend()
