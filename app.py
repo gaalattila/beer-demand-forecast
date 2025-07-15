@@ -26,12 +26,13 @@ if uploaded_file:
             df["day_of_week"] = df["date"].dt.dayofweek
             df["units_sold_lag1"] = df["units_sold"].shift(1).fillna(df["units_sold"].mean())
             df["units_sold_7d_avg"] = df["units_sold"].rolling(window=7, min_periods=1).mean().fillna(df["units_sold"].mean())
-            df = pd.get_dummies(df, columns=["beer_type"], prefix="beer")
+            df = pd.get_dummies(df, columns=["beer_type", "season"], prefix=["beer", "season"])
 
             # --- Model Training and Prediction ---
-            features = ["is_weekend", "temperature", "football_match", "holiday", "season", 
+            features = ["is_weekend", "temperature", "football_match", "holiday", 
                         "precipitation", "lead_time", "promotion", "day_of_week", 
-                        "units_sold_lag1", "units_sold_7d_avg"] + [col for col in df.columns if col.startswith("beer_")]
+                        "units_sold_lag1", "units_sold_7d_avg"] + \
+                       [col for col in df.columns if col.startswith("beer_") or col.startswith("season_")]
             X = df[features]
             y = df["units_sold"]
 
@@ -115,7 +116,6 @@ if uploaded_file:
                 "temperature": "Weather",
                 "football_match": "Event",
                 "holiday": "Holiday",
-                "season": "Seasonal",
                 "precipitation": "Weather",
                 "lead_time": "Inventory",
                 "promotion": "Marketing",
@@ -125,6 +125,8 @@ if uploaded_file:
             }
             for col in [c for c in df.columns if c.startswith("beer_")]:
                 categories[col] = "Product"
+            for col in [c for c in df.columns if c.startswith("season_")]:
+                categories[col] = "Seasonal"
 
             importance_df = pd.DataFrame({
                 "feature": features,
