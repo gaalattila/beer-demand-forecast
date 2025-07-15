@@ -2,21 +2,20 @@ import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
+from xgboost import XGBRegressor
 
-st.set_page_config(page_title="🍺 Beer Demand Forecasting & Anomaly Detection", layout="wide")
-
+st.set_page_config(page_title="🍺 Beer Forecast & Anomaly Detection", layout="wide")
 st.title("🍺 Beer Demand Forecast & Anomaly Insights")
 
-# Upload CSVs
-uploaded_main = st.file_uploader("Upload forecast file (beer_sales_predictions_with_anomalies.csv)", type=["csv"])
-uploaded_importance = st.file_uploader("Upload feature importance file (feature_importance.csv)", type=["csv"])
+# Upload file
+uploaded_file = st.file_uploader("Upload forecast file (beer_sales_predictions_with_anomalies.csv)", type=["csv"])
 
-if uploaded_main:
+if uploaded_file:
     try:
-        df = pd.read_csv(uploaded_main, parse_dates=["date"])
-        required = {"date", "units_sold", "predicted", "anomaly", "root_cause_hint"}
-        if not required.issubset(df.columns):
-            st.error(f"CSV must include: {required}")
+        df = pd.read_csv(uploaded_file, parse_dates=["date"])
+        required_cols = {"date", "units_sold", "predicted", "anomaly", "root_cause_hint"}
+        if not required_cols.issubset(df.columns):
+            st.error(f"CSV must include: {required_cols}")
         else:
             st.success("✅ Forecast data loaded")
 
@@ -29,13 +28,11 @@ if uploaded_main:
             ax1.set_xlabel("Date")
             st.pyplot(fig1)
 
-            # --- Anomaly Detection ---
-            st.subheader("🚨 Anomalies")
-
+            # --- Anomalies ---
+            st.subheader("🚨 Detected Anomalies")
             anomalies = df[df["anomaly"] == True]
             root_causes = sorted(anomalies["root_cause_hint"].unique())
             selected_causes = st.multiselect("Filter by Root Cause", root_causes, default=root_causes)
-
             filtered_anomalies = anomalies[anomalies["root_cause_hint"].isin(selected_causes)]
 
             if not filtered_anomalies.empty:
@@ -53,24 +50,45 @@ if uploaded_main:
             else:
                 st.info("No anomalies match the selected root causes.")
 
-            # --- Feature Importance ---
-            if uploaded_importance:
-                st.subheader("📊 Feature Importance")
+            # --- Feature Importance from On-the-Fly Model ---
+            st.subheader("📊 Feature Importance (from retrained model)")
+            feature_cols = ["is_weekend", "temperature", "football_match", "holiday", "season"]
 
-                importance_df = pd.read_csv(uploaded_importance)
-                if {"feature", "importance", "category"}.issubset(importance_df.columns):
-                    fig3, ax3 = plt.subplots(figsize=(10, 5))
-                    sns.barplot(
-                        data=importance_df.sort_values("importance", ascending=False),
-                        x="importance", y="feature", hue="category", ax=ax3
-                    )
-                    ax3.set_title("Feature Importance by Category")
-                    st.pyplot(fig3)
+            # Ensure required features exist
+            if set(feature_cols).issubset(df.columns):
+                X = df[feature_cols]
+                y = df["units_sold"]
+
+                model = XGBRegressor(n_estimators=100, max_depth=3)
+                model.fit(X, y)
+                importance = model.feature_importances_
+
+                category_map = {
+                    "is_weekend": "Temporal",
+                    "temperature": "Weather",
+                    "football_match": "Event",
+                    "holiday": "Holiday",
+                    "season": "Seasonal"
+                }
+
+                importance_df = pd.DataFrame({
+                    "feature": feature_cols,
+                    "importance": importance,
+                    "category": [category_map[f] for f in feature_cols]
+                }).sort_values(by="importance", ascending=False)
+
+                fig3, ax3 = plt.subplots(figsize=(10, 5))
+                sns.barplot(
+                    data=importance_df,
+                    x="importance", y="feature", hue="category", ax=ax3
+                )
+                ax3.set_title("Feature Importance by Category")
+                st.pyplot(fig3)
+
+                with st.expander("📄 Feature Importance Data"):
                     st.dataframe(importance_df)
-                else:
-                    st.warning("Feature importance file is missing required columns.")
             else:
-                st.info("Upload feature_importance.csv to see feature rankings.")
+                st.warning(f"Missing features: {set(feature_cols) - set(df.columns)}")
 
             # --- Download full dataset ---
             st.download_button(
@@ -85,5 +103,7 @@ if uploaded_main:
 
     except Exception as e:
         st.error(f"Error reading file: {e}")
+
 else:
     st.info("Please upload beer_sales_predictions_with_anomalies.csv to begin.")
+
