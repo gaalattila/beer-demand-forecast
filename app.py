@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from xgboost import XGBRegressor
 from sklearn.metrics import mean_absolute_error
+from mpl_toolkits.mplot3d import Axes3D
 
 # Note: To prevent inotify errors on Streamlit Cloud, ensure a config.toml file exists in the project root with:
 # [server]
@@ -48,6 +49,11 @@ def compute_correlation_matrix(df, features, threshold):
         corr_matrix = corr_matrix.where(~mask, 0)
     return corr_matrix
 
+# Cache interaction plot data preparation
+@st.cache_data
+def prepare_interaction_data(df, feature1, feature2):
+    return df[[feature1, feature2, "units_sold"]].dropna()
+
 # Upload file
 uploaded_file = st.file_uploader("📤 Upload raw input file (raw_beer_sales_data.csv)", type=["csv"])
 
@@ -89,7 +95,7 @@ if uploaded_file:
         df_filtered["predicted"] = df["predicted"][df_filtered.index]
         progress_bar.progress(40)
 
-        # --- Feature Importance (Computed Early for Correlation Matrix) ---
+        # --- Feature Importance (Computed Early for Correlation Matrix and Interaction Plot) ---
         importance = model.feature_importances_
         categories = {
             "is_weekend": "Temporal",
@@ -163,11 +169,11 @@ if uploaded_file:
 
         # --- Correlation Matrix ---
         st.subheader("🔗 Correlation Matrix")
-        st.write("This heatmap shows correlations between the top 5 most important features (from the model) and sales. Values range from -1 (negative) to 1 (positive). Strong correlations (>0.5) indicate key demand drivers and are listed in the table below. Use the slider to filter weak correlations and the checkbox to focus on sales-related features.")
+        st.write("This heatmap shows correlations between the top 8 most important features (from the model) and sales. Values range from -1 (negative) to 1 (positive). Strong correlations (>0.5) indicate key demand drivers and are listed in the table below. Use the slider to filter weak correlations and the checkbox to focus on sales-related features.")
         try:
-            # Select top 5 features from importance_df
-            top_5_features = importance_df["feature"].head(5).tolist()
-            corr_features = ["units_sold"] + top_5_features
+            # Select top 8 features from importance_df
+            top_8_features = importance_df["feature"].head(8).tolist()
+            corr_features = ["units_sold"] + top_8_features
             # Ensure all features exist in df_filtered
             corr_features = [f for f in corr_features if f in df_filtered.columns]
             
@@ -184,7 +190,7 @@ if uploaded_file:
             sns.heatmap(corr_matrix, annot=True, cmap="RdBu", center=0, fmt=".2f", 
                         linewidths=0.5, ax=ax5, cbar_kws={"label": "Correlation"},
                         annot_kws={"size": 10, "weight": "bold"})
-            ax5.set_title(f"Correlation Matrix (Top 5 Features, {region_filter})", color="#ffffff", fontsize=16)
+            ax5.set_title(f"Correlation Matrix (Top 8 Features, {region_filter})", color="#ffffff", fontsize=16)
             ax5.tick_params(axis="x", colors="#ffffff", rotation=45)
             ax5.tick_params(axis="y", colors="#ffffff")
             plt.tight_layout()
@@ -204,6 +210,63 @@ if uploaded_file:
                 st.info("No correlations with units_sold exceed |0.5|.")
         except Exception as e:
             st.error(f"Error generating correlation matrix: {str(e)}")
+
+        # --- Interaction Plot ---
+        st.subheader("🔄 Interaction of Top Features with Sales")
+        st.write("This plot shows how the top 2 features interact to influence sales. {description}")
+        try:
+            # Select top 2 features
+            top_2_features = importance_df["feature"].head(2).tolist()
+            feature1, feature2 = top_2_features
+            interaction_data = prepare_interaction_data(df_filtered, feature1, feature2)
+            
+            # Determine if features are numerical or categorical/binary
+            numerical_features = ["temperature", "precipitation", "lead_time", "day_of_week", 
+                                "units_sold_lag1", "units_sold_7d_avg", "customer_sentiment", 
+                                "units_sold_30d_avg"]
+            is_feature1_numerical = feature1 in numerical_features
+            is_feature2_numerical = feature2 in numerical_features
+            
+            if is_feature1_numerical and is_feature2_numerical:
+                # 3D Scatter Plot for two numerical features
+                fig6 = plt.figure(figsize=(10, 6))
+                ax6 = fig6.add_subplot(111, projection="3d")
+                scatter = ax6.scatter(interaction_data[feature1], interaction_data[feature2], 
+                                    interaction_data["units_sold"], c=interaction_data["units_sold"], 
+                                    cmap="RdBu", s=50, alpha=0.6)
+                ax6.set_xlabel(feature1, color="#ffffff", fontsize=12)
+                ax6.set_ylabel(feature2, color="#ffffff", fontsize=12)
+                ax6.set_zlabel("Units Sold", color="#ffffff", fontsize=12)
+                ax6.set_title(f"Interaction of {feature1} and {feature2} with Sales ({region_filter})", 
+                            color="#ffffff", fontsize=16)
+                ax6.tick_params(axis="x", colors="#ffffff")
+                ax6.tick_params(axis="y", colors="#ffffff")
+                ax6.tick_params(axis="z", colors="#ffffff")
+                fig6.colorbar(scatter, ax=ax6, label="Units Sold")
+                plt.tight_layout()
+                st.pyplot(fig6)
+                st.write(f"Higher values of {feature1} and {feature2} together may drive sales spikes, as seen in the scatter distribution.")
+            else:
+                # Grouped Bar Plot for categorical/binary features
+                fig6, ax6 = plt.subplots(figsize=(10, 6))
+                if not is_feature1_numerical:
+                    interaction_data[feature1] = interaction_data[feature1].astype(str)
+                if not is_feature2_numerical:
+                    interaction_data[feature2] = interaction_data[feature2].astype(str)
+                grouped_data = interaction_data.groupby([feature1, feature2])["units_sold"].mean().unstack()
+                grouped_data.plot(kind="bar", ax=ax6, color=["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728"], width=0.4)
+                ax6.set_xlabel(feature1, color="#ffffff", fontsize=12)
+                ax6.set_ylabel("Average Units Sold", color="#ffffff", fontsize=12)
+                ax6.set_title(f"Interaction of {feature1} and {feature2} with Sales ({region_filter})", 
+                            color="#ffffff", fontsize=16)
+                ax6.tick_params(axis="x", colors="#ffffff")
+                ax6.tick_params(axis="y", colors="#ffffff")
+                ax6.legend(title=feature2, labelcolor="#ffffff")
+                plt.tight_layout()
+                st.pyplot(fig6)
+                st.write(f"Sales vary significantly when {feature1} and {feature2} interact, with higher sales for certain combinations (e.g., hot days with football matches).")
+        except Exception as e:
+            st.error(f"Error generating interaction plot: {str(e)}")
 
         # --- Forecast Plot ---
         st.subheader("📈 Actual vs Predicted Sales")
