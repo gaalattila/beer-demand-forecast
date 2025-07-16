@@ -89,6 +89,38 @@ if uploaded_file:
         df_filtered["predicted"] = df["predicted"][df_filtered.index]
         progress_bar.progress(40)
 
+        # --- Feature Importance (Computed Early for Correlation Matrix) ---
+        importance = model.feature_importances_
+        categories = {
+            "is_weekend": "Temporal",
+            "temperature": "Weather",
+            "football_match": "Event",
+            "holiday": "Holiday",
+            "precipitation": "Weather",
+            "lead_time": "Inventory",
+            "promotion": "Marketing",
+            "day_of_week": "Temporal",
+            "units_sold_lag1": "Historical",
+            "units_sold_7d_avg": "Historical",
+            "customer_sentiment": "Social",
+            "competitor_promotion": "Market",
+            "supply_chain_disruption": "Logistics",
+            "units_sold_30d_avg": "Historical",
+            "hot_day": "Weather"
+        }
+        for col in [c for c in df.columns if c.startswith("beer_")]:
+            categories[col] = "Product"
+        for col in [c for c in df.columns if c.startswith("season_")]:
+            categories[col] = "Seasonal"
+        for col in [c for c in df.columns if c.startswith("region_")]:
+            categories[col] = "Regional"
+
+        importance_df = pd.DataFrame({
+            "feature": features,
+            "importance": importance,
+            "category": [categories.get(f, "Other") for f in features]
+        }).sort_values(by="importance", ascending=False)
+
         # --- Anomaly Detection ---
         status_text.text("Detecting anomalies...")
         df["error"] = abs(df["units_sold"] - df["predicted"])
@@ -131,14 +163,14 @@ if uploaded_file:
 
         # --- Correlation Matrix ---
         st.subheader("🔗 Correlation Matrix")
-        st.write("This heatmap shows correlations between all model features and sales, including numerical and categorical (one-hot encoded) features. Values range from -1 (negative) to 1 (positive). Strong correlations (>0.5) indicate key demand drivers and are listed in the table below. Use the slider to filter weak correlations and the checkbox to focus on sales-related features.")
+        st.write("This heatmap shows correlations between the top 5 most important features (from the model) and sales. Values range from -1 (negative) to 1 (positive). Strong correlations (>0.5) indicate key demand drivers and are listed in the table below. Use the slider to filter weak correlations and the checkbox to focus on sales-related features.")
         try:
-            corr_features = ["units_sold", "is_weekend", "temperature", "football_match", "holiday", 
-                             "precipitation", "lead_time", "promotion", "day_of_week", 
-                             "units_sold_lag1", "units_sold_7d_avg", "customer_sentiment", 
-                             "competitor_promotion", "supply_chain_disruption", "units_sold_30d_avg", 
-                             "hot_day"] + \
-                            [col for col in df_filtered.columns if col.startswith("beer_") or col.startswith("season_") or col.startswith("region_")]
+            # Select top 5 features from importance_df
+            top_5_features = importance_df["feature"].head(5).tolist()
+            corr_features = ["units_sold"] + top_5_features
+            # Ensure all features exist in df_filtered
+            corr_features = [f for f in corr_features if f in df_filtered.columns]
+            
             show_full_matrix = st.checkbox("Show Full Correlation Matrix", value=True)
             corr_threshold = st.slider("Correlation Threshold (show values above this magnitude)", 0.0, 1.0, 0.3, 0.1)
             
@@ -152,7 +184,7 @@ if uploaded_file:
             sns.heatmap(corr_matrix, annot=True, cmap="RdBu", center=0, fmt=".2f", 
                         linewidths=0.5, ax=ax5, cbar_kws={"label": "Correlation"},
                         annot_kws={"size": 10, "weight": "bold"})
-            ax5.set_title(f"Correlation Matrix ({region_filter})", color="#ffffff", fontsize=16)
+            ax5.set_title(f"Correlation Matrix (Top 5 Features, {region_filter})", color="#ffffff", fontsize=16)
             ax5.tick_params(axis="x", colors="#ffffff", rotation=45)
             ax5.tick_params(axis="y", colors="#ffffff")
             plt.tight_layout()
@@ -252,37 +284,6 @@ if uploaded_file:
         st.subheader("📊 Feature Importance (retrained model)")
         st.write("This chart shows which factors (e.g., hot days, football matches) most influence sales predictions, helping prioritize inventory strategies.")
         try:
-            importance = model.feature_importances_
-            categories = {
-                "is_weekend": "Temporal",
-                "temperature": "Weather",
-                "football_match": "Event",
-                "holiday": "Holiday",
-                "precipitation": "Weather",
-                "lead_time": "Inventory",
-                "promotion": "Marketing",
-                "day_of_week": "Temporal",
-                "units_sold_lag1": "Historical",
-                "units_sold_7d_avg": "Historical",
-                "customer_sentiment": "Social",
-                "competitor_promotion": "Market",
-                "supply_chain_disruption": "Logistics",
-                "units_sold_30d_avg": "Historical",
-                "hot_day": "Weather"
-            }
-            for col in [c for c in df.columns if c.startswith("beer_")]:
-                categories[col] = "Product"
-            for col in [c for c in df.columns if c.startswith("season_")]:
-                categories[col] = "Seasonal"
-            for col in [c for c in df.columns if c.startswith("region_")]:
-                categories[col] = "Regional"
-
-            importance_df = pd.DataFrame({
-                "feature": features,
-                "importance": importance,
-                "category": [categories.get(f, "Other") for f in features]
-            }).sort_values(by="importance", ascending=False)
-
             fig3, ax3 = plt.subplots(figsize=(10, 5))
             sns.barplot(data=importance_df, x="importance", y="feature", hue="category", ax=ax3)
             ax3.set_title("Feature Importance", color="#ffffff", fontsize=16)
