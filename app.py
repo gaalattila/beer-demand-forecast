@@ -6,10 +6,9 @@ import seaborn as sns
 from xgboost import XGBRegressor
 from sklearn.metrics import mean_absolute_error
 
-# Note: To prevent inotify errors on Streamlit Cloud, create a config.toml file in the project root with:
+# Note: To prevent inotify errors on Streamlit Cloud, ensure a config.toml file exists in the project root with:
 # [server]
 # fileWatcherType = "none"
-# Alternatively, run locally with: streamlit run app.py --server.fileWatcherType none
 
 # Set Matplotlib dark theme for Chart.js-like visuals
 plt.style.use("dark_background")
@@ -54,6 +53,15 @@ if uploaded_file:
         progress_bar.progress(20)
         st.success("✅ Raw input loaded")
 
+        # --- Regional Dashboard Filter ---
+        st.subheader("🌍 Regional Dashboard")
+        st.write("Select a region to view tailored forecasts, anomalies, and inventory recommendations. Choose 'All' to see network-wide data.")
+        region_filter = st.selectbox("Select Region", ["All", "Urban", "Suburban", "Rural"])
+        if region_filter != "All":
+            df_filtered = df[df[f"region_{region_filter}"] == 1]
+        else:
+            df_filtered = df
+
         # --- Model Training and Prediction ---
         status_text.text("Training model...")
         features = ["is_weekend", "temperature", "football_match", "holiday", 
@@ -67,6 +75,7 @@ if uploaded_file:
         model = XGBRegressor(n_estimators=50, max_depth=2, reg_alpha=0.1)
         model.fit(X, y)
         df["predicted"] = model.predict(X)
+        df_filtered["predicted"] = df["predicted"][df_filtered.index]  # Align predictions with filtered data
         progress_bar.progress(40)
 
         # --- Anomaly Detection ---
@@ -74,6 +83,7 @@ if uploaded_file:
         df["error"] = abs(df["units_sold"] - df["predicted"])
         threshold = df["error"].mean() + 2 * df["error"].std()
         df["anomaly"] = df["error"] > threshold
+        df_filtered["anomaly"] = df["anomaly"][df_filtered.index]
         progress_bar.progress(60)
 
         # --- Root Cause Hints ---
@@ -101,33 +111,35 @@ if uploaded_file:
             return "Unexplained"
 
         df["root_cause_hint"] = df.apply(lambda row: root_cause(row) if row["anomaly"] else "", axis=1)
+        df_filtered["root_cause_hint"] = df["root_cause_hint"][df_filtered.index]
 
-        # --- Reorder Quantity (Enhanced) ---
-        # Use np.where for vectorized conditional logic
+        # --- Reorder Quantity ---
         urban_buffer = np.where(df["region_Urban"] == 1, 1.2, 1.0)  # 20% buffer for Urban
         disruption_buffer = np.where(df["supply_chain_disruption"] == 1, 1.5, 1.0)  # 50% buffer for disruptions
         df["reorder_quantity"] = (df["predicted"] * (df["lead_time"] + 1) * 
                                  urban_buffer * disruption_buffer - 
                                  df["stock_level"]).clip(lower=0)
+        df_filtered["reorder_quantity"] = df["reorder_quantity"][df_filtered.index]
         progress_bar.progress(80)
 
         # --- Forecast Plot ---
         st.subheader("📈 Actual vs Predicted Sales")
-        if df["units_sold"].isna().any() or df["predicted"].isna().any():
+        st.write("This plot compares actual beer sales (blue) with AI-predicted sales (orange) to assess forecast accuracy. Look for alignment and note spikes (e.g., Summer or football matches).")
+        if df_filtered["units_sold"].isna().any() or df_filtered["predicted"].isna().any():
             st.warning("NaN values detected in units_sold or predicted. Filling with mean for plotting.")
-            df["units_sold"] = df["units_sold"].fillna(df["units_sold"].mean())
-            df["predicted"] = df["predicted"].fillna(df["predicted"].mean())
-        st.write(f"Debug: units_sold - min: {df['units_sold'].min()}, max: {df['units_sold'].max()}, mean: {df['units_sold'].mean():.2f}")
-        st.write(f"Debug: predicted - min: {df['predicted'].min()}, max: {df['predicted'].max()}, mean: {df['predicted'].mean():.2f}")
-        st.write(f"Debug: Mean Absolute Error (MAE) between units_sold and predicted: {mean_absolute_error(df['units_sold'], df['predicted']):.2f}")
+            df_filtered["units_sold"] = df_filtered["units_sold"].fillna(df_filtered["units_sold"].mean())
+            df_filtered["predicted"] = df_filtered["predicted"].fillna(df_filtered["predicted"].mean())
+        st.write(f"Debug: units_sold - min: {df_filtered['units_sold'].min()}, max: {df_filtered['units_sold'].max()}, mean: {df_filtered['units_sold'].mean():.2f}")
+        st.write(f"Debug: predicted - min: {df_filtered['predicted'].min()}, max: {df_filtered['predicted'].max()}, mean: {df_filtered['predicted'].mean():.2f}")
+        st.write(f"Debug: Mean Absolute Error (MAE) between units_sold and predicted: {mean_absolute_error(df_filtered['units_sold'], df_filtered['predicted']):.2f}")
 
         status_text.text("Generating plots...")
         try:
             fig1, ax1 = plt.subplots(figsize=(14, 4))
-            sns.lineplot(data=df, x="date", y="units_sold", label="Actual Sales", ax=ax1, color="#1f77b4", linewidth=3, alpha=0.8)
-            sns.lineplot(data=df, x="date", y="predicted", label="Predicted Sales", ax=ax1, color="#ff7f0e", linestyle="--", linewidth=3, alpha=0.8)
+            sns.lineplot(data=df_filtered, x="date", y="units_sold", label="Actual Sales", ax=ax1, color="#1f77b4", linewidth=3, alpha=0.8)
+            sns.lineplot(data=df_filtered, x="date", y="predicted", label="Predicted Sales", ax=ax1, color="#ff7f0e", linestyle="--", linewidth=3, alpha=0.8)
             ax1.set_ylabel("Units", color="#ffffff", fontsize=12)
-            ax1.set_title("Actual vs Predicted Sales", color="#ffffff", fontsize=16)
+            ax1.set_title(f"Actual vs Predicted Sales ({region_filter})", color="#ffffff", fontsize=16)
             ax1.tick_params(axis="x", colors="#ffffff", rotation=45)
             ax1.tick_params(axis="y", colors="#ffffff")
             ax1.legend(labelcolor="#ffffff")
@@ -138,24 +150,25 @@ if uploaded_file:
 
         # --- Anomalies ---
         st.subheader("🚨 Detected Anomalies")
-        anomalies = df[df["anomaly"] == True]
+        st.write("This section highlights unexpected sales spikes or drops (red markers) with potential causes (e.g., football matches, high sentiment). Filter by cause to investigate.")
+        anomalies = df_filtered[df_filtered["anomaly"] == True]
         root_causes = sorted(anomalies["root_cause_hint"].unique())
-        selected_causes = st.multiselect("Filter by Root Cause", root_causes, default=root_causes)
-        filtered = anomalies[anomalies["root_cause_hint"].isin(selected_causes)]
+        selected_causes = st.multiselect("Filter by Root Cause", root_causes, default=root_causes, key="anomaly_filter")
+        filtered_anomalies = anomalies[anomalies["root_cause_hint"].isin(selected_causes)]
 
-        if not filtered.empty:
+        if not filtered_anomalies.empty:
             try:
                 fig2, ax2 = plt.subplots(figsize=(14, 4))
-                sns.lineplot(data=df, x="date", y="units_sold", label="Actual Sales", ax=ax2, color="#1f77b4", linewidth=3, alpha=0.8)
-                sns.scatterplot(data=filtered, x="date", y="units_sold", color="red", label="Anomaly", s=100, marker="X", ax=ax2)
-                ax2.set_title("Filtered Anomalies", color="#ffffff", fontsize=16)
+                sns.lineplot(data=df_filtered, x="date", y="units_sold", label="Actual Sales", ax=ax2, color="#1f77b4", linewidth=3, alpha=0.8)
+                sns.scatterplot(data=filtered_anomalies, x="date", y="units_sold", color="red", label="Anomaly", s=100, marker="X", ax=ax2)
+                ax2.set_title(f"Filtered Anomalies ({region_filter})", color="#ffffff", fontsize=16)
                 ax2.set_ylabel("Units", color="#ffffff", fontsize=12)
                 ax2.tick_params(axis="x", colors="#ffffff", rotation=45)
                 ax2.tick_params(axis="y", colors="#ffffff")
                 ax2.legend(labelcolor="#ffffff")
                 plt.tight_layout()
                 st.pyplot(fig2)
-                st.dataframe(filtered[["date", "units_sold", "predicted", "root_cause_hint"]])
+                st.dataframe(filtered_anomalies[["date", "units_sold", "predicted", "root_cause_hint"]])
             except Exception as e:
                 st.error(f"Error generating anomalies plot: {str(e)}")
         else:
@@ -163,12 +176,13 @@ if uploaded_file:
 
         # --- Stock vs Demand Plot ---
         st.subheader("📦 Stock Levels vs Predicted Demand")
+        st.write("This plot compares stock levels (green) with actual (blue) and predicted (orange) demand to identify potential stockouts or overstocking.")
         try:
             fig4, ax4 = plt.subplots(figsize=(14, 4))
-            sns.lineplot(data=df, x="date", y="units_sold", label="Actual Sales", ax=ax4, color="#1f77b4", linewidth=3, alpha=0.8)
-            sns.lineplot(data=df, x="date", y="predicted", label="Predicted Demand", ax=ax4, color="#ff7f0e", linestyle="--", linewidth=3, alpha=0.8)
-            sns.lineplot(data=df, x="date", y="stock_level", label="Stock Level", ax=ax4, color="#2ca02c", linewidth=3, alpha=0.8)
-            ax4.set_title("Stock Levels vs Actual and Predicted Demand", color="#ffffff", fontsize=16)
+            sns.lineplot(data=df_filtered, x="date", y="units_sold", label="Actual Sales", ax=ax4, color="#1f77b4", linewidth=3, alpha=0.8)
+            sns.lineplot(data=df_filtered, x="date", y="predicted", label="Predicted Demand", ax=ax4, color="#ff7f0e", linestyle="--", linewidth=3, alpha=0.8)
+            sns.lineplot(data=df_filtered, x="date", y="stock_level", label="Stock Level", ax=ax4, color="#2ca02c", linewidth=3, alpha=0.8)
+            ax4.set_title(f"Stock Levels vs Actual and Predicted Demand ({region_filter})", color="#ffffff", fontsize=16)
             ax4.set_ylabel("Units", color="#ffffff", fontsize=12)
             ax4.tick_params(axis="x", colors="#ffffff", rotation=45)
             ax4.tick_params(axis="y", colors="#ffffff")
@@ -180,10 +194,12 @@ if uploaded_file:
 
         # --- Reorder Recommendations ---
         st.subheader("📦 Reorder Recommendations")
-        st.dataframe(df[["date", "predicted", "stock_level", "reorder_quantity"]])
+        st.write("This table suggests reorder quantities to maintain optimal inventory, accounting for predicted demand, lead time, and buffers for Urban regions (20% extra) and supply chain disruptions (50% extra).")
+        st.dataframe(df_filtered[["date", "predicted", "stock_level", "reorder_quantity"]])
 
         # --- Feature Importance ---
         st.subheader("📊 Feature Importance (retrained model)")
+        st.write("This chart shows which factors (e.g., football matches, customer sentiment) most influence sales predictions, helping prioritize inventory strategies.")
         try:
             importance = model.feature_importances_
             categories = {
@@ -232,6 +248,7 @@ if uploaded_file:
 
         # --- Prediction Model Equation ---
         st.subheader("🧮 Prediction Model Equation")
+        st.write("This equation summarizes how key factors (e.g., past sales, events) contribute to the AI’s sales predictions, guiding inventory planning.")
         try:
             st.write("The prediction model is an XGBoost ensemble of 50 decision trees, each with a maximum depth of 2, and L1 regularization (reg_alpha=0.1).")
             st.write("The predicted units_sold is a weighted sum of contributions from the following features, based on their importance:")
@@ -247,15 +264,18 @@ if uploaded_file:
             st.error(f"Error generating model equation: {str(e)}")
 
         # --- Download Enriched Output ---
+        st.subheader("📥 Download Forecast Data")
+        st.write("Download the enriched dataset with predictions, anomalies, and reorder quantities for further analysis.")
         st.download_button(
-            label="📥 Download Forecast + Anomaly CSV",
-            data=df.to_csv(index=False).encode("utf-8"),
-            file_name="beer_forecast_with_anomalies.csv",
+            label="Download Forecast + Anomaly CSV",
+            data=df_filtered.to_csv(index=False).encode("utf-8"),
+            file_name=f"beer_forecast_with_anomalies_{region_filter.lower()}.csv",
             mime="text/csv",
         )
 
         with st.expander("🧾 Show Enriched Data"):
-            st.dataframe(df)
+            st.write("This table shows the full dataset with predictions, anomalies, and reorder quantities for the selected region.")
+            st.dataframe(df_filtered)
 
         progress_bar.progress(100)
         status_text.text("Processing complete!")
