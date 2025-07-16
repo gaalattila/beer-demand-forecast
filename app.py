@@ -6,83 +6,109 @@ import seaborn as sns
 from xgboost import XGBRegressor
 from sklearn.metrics import mean_absolute_error
 
+# Disable file watcher to prevent inotify errors
+st.set_option("server.fileWatcherType", "none")
+
 # Set Matplotlib dark theme for Chart.js-like visuals
 plt.style.use("dark_background")
 
 st.set_page_config(page_title="🍺 Beer Forecast & Root Cause Analyzer", layout="wide")
 st.title("🍺 Beer Demand Forecast & Anomaly Detection")
 
+# Cache data loading and feature engineering
+@st.cache_data
+def load_and_process_data(file):
+    try:
+        df = pd.read_csv(file, parse_dates=["date"])
+        
+        required_cols = {"date", "units_sold", "is_weekend", "temperature", "football_match", "holiday", "season", 
+                        "precipitation", "lead_time", "beer_type", "promotion", "stock_level"}
+        if not required_cols.issubset(df.columns):
+            raise ValueError(f"CSV must include columns: {required_cols}")
+        
+        # Feature Engineering
+        df["day_of_week"] = df["date"].dt.dayofweek
+        df["units_sold_lag1"] = df["units_sold"].shift(1).fillna(df["units_sold"].mean())
+        df["units_sold_7d_avg"] = df["units_sold"].rolling(window=7, min_periods=1).mean().fillna(df["units_sold"].mean())
+        df = pd.get_dummies(df, columns=["beer_type", "season"], prefix=["beer", "season"])
+        
+        return df
+    except Exception as e:
+        raise ValueError(f"Error processing data: {str(e)}")
+
 # Upload file
 uploaded_file = st.file_uploader("📤 Upload raw input file (raw_beer_sales_data.csv)", type=["csv"])
 
 if uploaded_file:
     try:
-        df = pd.read_csv(uploaded_file, parse_dates=["date"])
+        # Initialize progress bar
+        progress_bar = st.progress(0)
+        status_text = st.empty()
+        
+        # Load and process data
+        status_text.text("Loading and processing data...")
+        df = load_and_process_data(uploaded_file)
+        progress_bar.progress(20)
+        st.success("✅ Raw input loaded")
 
-        required_cols = {"date", "units_sold", "is_weekend", "temperature", "football_match", "holiday", "season", 
-                        "precipitation", "lead_time", "beer_type", "promotion", "stock_level"}
-        if not required_cols.issubset(df.columns):
-            st.error(f"CSV must include columns: {required_cols}")
-        else:
-            st.success("✅ Raw input loaded")
+        # --- Model Training and Prediction ---
+        status_text.text("Training model...")
+        features = ["is_weekend", "temperature", "football_match", "holiday", 
+                    "precipitation", "lead_time", "promotion", "day_of_week", 
+                    "units_sold_lag1", "units_sold_7d_avg"] + \
+                   [col for col in df.columns if col.startswith("beer_") or col.startswith("season_")]
+        X = df[features]
+        y = df["units_sold"]
 
-            # --- Feature Engineering ---
-            df["day_of_week"] = df["date"].dt.dayofweek
-            df["units_sold_lag1"] = df["units_sold"].shift(1).fillna(df["units_sold"].mean())
-            df["units_sold_7d_avg"] = df["units_sold"].rolling(window=7, min_periods=1).mean().fillna(df["units_sold"].mean())
-            df = pd.get_dummies(df, columns=["beer_type", "season"], prefix=["beer", "season"])
+        model = XGBRegressor(n_estimators=50, max_depth=2, reg_alpha=0.1)
+        model.fit(X, y)
+        df["predicted"] = model.predict(X)
+        progress_bar.progress(40)
 
-            # --- Model Training and Prediction ---
-            features = ["is_weekend", "temperature", "football_match", "holiday", 
-                        "precipitation", "lead_time", "promotion", "day_of_week", 
-                        "units_sold_lag1", "units_sold_7d_avg"] + \
-                       [col for col in df.columns if col.startswith("beer_") or col.startswith("season_")]
-            X = df[features]
-            y = df["units_sold"]
+        # --- Anomaly Detection ---
+        status_text.text("Detecting anomalies...")
+        df["error"] = abs(df["units_sold"] - df["predicted"])
+        threshold = df["error"].mean() + 2 * df["error"].std()
+        df["anomaly"] = df["error"] > threshold
+        progress_bar.progress(60)
 
-            model = XGBRegressor(n_estimators=100, max_depth=2, reg_alpha=0.1)
-            model.fit(X, y)
-            df["predicted"] = model.predict(X)
+        # --- Root Cause Hints ---
+        def root_cause(row):
+            if row["football_match"] and row["temperature"] > 25:
+                return "Hot day + football match"
+            elif row["football_match"]:
+                return "Football match"
+            elif row["temperature"] > 25:
+                return "Hot day"
+            elif row["precipitation"] > 10:
+                return "Rainy day"
+            elif row["promotion"] == 1:
+                return "Promotion active"
+            elif row["is_weekend"]:
+                return "Weekend spike"
+            elif row["lead_time"] > 5:
+                return "Delayed restock"
+            return "Unexplained"
 
-            # --- Anomaly Detection ---
-            df["error"] = abs(df["units_sold"] - df["predicted"])
-            threshold = df["error"].mean() + 2 * df["error"].std()
-            df["anomaly"] = df["error"] > threshold
+        df["root_cause_hint"] = df.apply(lambda row: root_cause(row) if row["anomaly"] else "", axis=1)
 
-            # --- Root Cause Hints ---
-            def root_cause(row):
-                if row["football_match"] and row["temperature"] > 25:
-                    return "Hot day + football match"
-                elif row["football_match"]:
-                    return "Football match"
-                elif row["temperature"] > 25:
-                    return "Hot day"
-                elif row["precipitation"] > 10:
-                    return "Rainy day"
-                elif row["promotion"] == 1:
-                    return "Promotion active"
-                elif row["is_weekend"]:
-                    return "Weekend spike"
-                elif row["lead_time"] > 5:
-                    return "Delayed restock"
-                return "Unexplained"
+        # --- Reorder Quantity ---
+        df["reorder_quantity"] = (df["predicted"] * (df["lead_time"] + 1) - df["stock_level"]).clip(lower=0)
+        progress_bar.progress(80)
 
-            df["root_cause_hint"] = df.apply(lambda row: root_cause(row) if row["anomaly"] else "", axis=1)
+        # --- Forecast Plot ---
+        st.subheader("📈 Actual vs Predicted Sales")
+        # Debug: Check data integrity
+        if df["units_sold"].isna().any() or df["predicted"].isna().any():
+            st.warning("NaN values detected in units_sold or predicted. Filling with mean for plotting.")
+            df["units_sold"] = df["units_sold"].fillna(df["units_sold"].mean())
+            df["predicted"] = df["predicted"].fillna(df["predicted"].mean())
+        st.write(f"Debug: units_sold - min: {df['units_sold'].min()}, max: {df['units_sold'].max()}, mean: {df['units_sold'].mean():.2f}")
+        st.write(f"Debug: predicted - min: {df['predicted'].min()}, max: {df['predicted'].max()}, mean: {df['predicted'].mean():.2f}")
+        st.write(f"Debug: Mean Absolute Error (MAE) between units_sold and predicted: {mean_absolute_error(df['units_sold'], df['predicted']):.2f}")
 
-            # --- Reorder Quantity ---
-            df["reorder_quantity"] = (df["predicted"] * (df["lead_time"] + 1) - df["stock_level"]).clip(lower=0)
-
-            # --- Forecast Plot ---
-            st.subheader("📈 Actual vs Predicted Sales")
-            # Debug: Check data integrity
-            if df["units_sold"].isna().any() or df["predicted"].isna().any():
-                st.warning("NaN values detected in units_sold or predicted. Filling with mean for plotting.")
-                df["units_sold"] = df["units_sold"].fillna(df["units_sold"].mean())
-                df["predicted"] = df["predicted"].fillna(df["predicted"].mean())
-            st.write(f"Debug: units_sold - min: {df['units_sold'].min()}, max: {df['units_sold'].max()}, mean: {df['units_sold'].mean():.2f}")
-            st.write(f"Debug: predicted - min: {df['predicted'].min()}, max: {df['predicted'].max()}, mean: {df['predicted'].mean():.2f}")
-            st.write(f"Debug: Mean Absolute Error (MAE) between units_sold and predicted: {mean_absolute_error(df['units_sold'], df['predicted']):.2f}")
-
+        status_text.text("Generating plots...")
+        try:
             fig1, ax1 = plt.subplots(figsize=(14, 4))
             sns.lineplot(data=df, x="date", y="units_sold", label="Actual Sales", ax=ax1, color="#1f77b4", linewidth=3, alpha=0.8)
             sns.lineplot(data=df, x="date", y="predicted", label="Predicted Sales", ax=ax1, color="#ff7f0e", linestyle="--", linewidth=3, alpha=0.8)
@@ -93,15 +119,18 @@ if uploaded_file:
             ax1.legend(labelcolor="#ffffff")
             plt.tight_layout()
             st.pyplot(fig1)
+        except Exception as e:
+            st.error(f"Error generating forecast plot: {str(e)}")
 
-            # --- Anomalies ---
-            st.subheader("🚨 Detected Anomalies")
-            anomalies = df[df["anomaly"] == True]
-            root_causes = sorted(anomalies["root_cause_hint"].unique())
-            selected_causes = st.multiselect("Filter by Root Cause", root_causes, default=root_causes)
-            filtered = anomalies[anomalies["root_cause_hint"].isin(selected_causes)]
+        # --- Anomalies ---
+        st.subheader("🚨 Detected Anomalies")
+        anomalies = df[df["anomaly"] == True]
+        root_causes = sorted(anomalies["root_cause_hint"].unique())
+        selected_causes = st.multiselect("Filter by Root Cause", root_causes, default=root_causes)
+        filtered = anomalies[anomalies["root_cause_hint"].isin(selected_causes)]
 
-            if not filtered.empty:
+        if not filtered.empty:
+            try:
                 fig2, ax2 = plt.subplots(figsize=(14, 4))
                 sns.lineplot(data=df, x="date", y="units_sold", label="Actual Sales", ax=ax2, color="#1f77b4", linewidth=3, alpha=0.8)
                 sns.scatterplot(data=filtered, x="date", y="units_sold", color="red", label="Anomaly", s=100, marker="X", ax=ax2)
@@ -112,13 +141,15 @@ if uploaded_file:
                 ax2.legend(labelcolor="#ffffff")
                 plt.tight_layout()
                 st.pyplot(fig2)
-
                 st.dataframe(filtered[["date", "units_sold", "predicted", "root_cause_hint"]])
-            else:
-                st.info("No anomalies match the selected root causes.")
+            except Exception as e:
+                st.error(f"Error generating anomalies plot: {str(e)}")
+        else:
+            st.info("No anomalies match the selected root causes.")
 
-            # --- Stock vs Demand Plot ---
-            st.subheader("📦 Stock Levels vs Predicted Demand")
+        # --- Stock vs Demand Plot ---
+        st.subheader("📦 Stock Levels vs Predicted Demand")
+        try:
             fig4, ax4 = plt.subplots(figsize=(14, 4))
             sns.lineplot(data=df, x="date", y="units_sold", label="Actual Sales", ax=ax4, color="#1f77b4", linewidth=3, alpha=0.8)
             sns.lineplot(data=df, x="date", y="predicted", label="Predicted Demand", ax=ax4, color="#ff7f0e", linestyle="--", linewidth=3, alpha=0.8)
@@ -130,13 +161,16 @@ if uploaded_file:
             ax4.legend(labelcolor="#ffffff")
             plt.tight_layout()
             st.pyplot(fig4)
+        except Exception as e:
+            st.error(f"Error generating stock plot: {str(e)}")
 
-            # --- Reorder Recommendations ---
-            st.subheader("📦 Reorder Recommendations")
-            st.dataframe(df[["date", "predicted", "stock_level", "reorder_quantity"]])
+        # --- Reorder Recommendations ---
+        st.subheader("📦 Reorder Recommendations")
+        st.dataframe(df[["date", "predicted", "stock_level", "reorder_quantity"]])
 
-            # --- Feature Importance ---
-            st.subheader("📊 Feature Importance (retrained model)")
+        # --- Feature Importance ---
+        st.subheader("📊 Feature Importance (retrained model)")
+        try:
             importance = model.feature_importances_
             categories = {
                 "is_weekend": "Temporal",
@@ -173,13 +207,15 @@ if uploaded_file:
             st.pyplot(fig3)
             with st.expander("📄 Feature Importance Table"):
                 st.dataframe(importance_df)
+        except Exception as e:
+            st.error(f"Error generating feature importance plot: {str(e)}")
 
-            # --- Prediction Model Equation ---
-            st.subheader("🧮 Prediction Model Equation")
-            st.write("The prediction model is an XGBoost ensemble of 100 decision trees, each with a maximum depth of 2, and L1 regularization (reg_alpha=0.1).")
+        # --- Prediction Model Equation ---
+        st.subheader("🧮 Prediction Model Equation")
+        try:
+            st.write("The prediction model is an XGBoost ensemble of 50 decision trees, each with a maximum depth of 2, and L1 regularization (reg_alpha=0.1).")
             st.write("The predicted units_sold is a weighted sum of contributions from the following features, based on their importance:")
             
-            # Display top 5 features and their importance
             top_features = importance_df.head(5)[["feature", "importance"]]
             equation = "Predicted units_sold ≈ "
             equation += " + ".join([f"{row['importance']:.3f} * {row['feature']}" for _, row in top_features.iterrows()])
@@ -187,20 +223,27 @@ if uploaded_file:
             st.write(equation)
             with st.expander("📄 Top Feature Contributions"):
                 st.dataframe(top_features)
+        except Exception as e:
+            st.error(f"Error generating model equation: {str(e)}")
 
-            # --- Download Enriched Output ---
-            st.download_button(
-                label="📥 Download Forecast + Anomaly CSV",
-                data=df.to_csv(index=False).encode("utf-8"),
-                file_name="beer_forecast_with_anomalies.csv",
-                mime="text/csv",
-            )
+        # --- Download Enriched Output ---
+        st.download_button(
+            label="📥 Download Forecast + Anomaly CSV",
+            data=df.to_csv(index=False).encode("utf-8"),
+            file_name="beer_forecast_with_anomalies.csv",
+            mime="text/csv",
+        )
 
-            with st.expander("🧾 Show Enriched Data"):
-                st.dataframe(df)
+        with st.expander("🧾 Show Enriched Data"):
+            st.dataframe(df)
+
+        progress_bar.progress(100)
+        status_text.text("Processing complete!")
 
     except Exception as e:
-        st.error(f"❌ Error reading file: {e}")
+        st.error(f"❌ Error processing app: {str(e)}")
+        progress_bar.progress(0)
+        status_text.text("")
 
 else:
     st.info("Please upload the raw beer sales dataset to get started.")
