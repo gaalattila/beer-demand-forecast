@@ -1,6 +1,0 @@
-feature,importance,category
-football_match,0.8394926,Event
-is_weekend,0.122396044,Temporal
-temperature,0.026038928,Weather
-season,0.0065490482,Seasonal
-holiday,0.0055233287,Holiday
