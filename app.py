@@ -32,8 +32,7 @@ def load_and_process_data(file):
         df["day_of_week"] = df["date"].dt.dayofweek
         df["units_sold_lag1"] = df["units_sold"].shift(1).fillna(df["units_sold"].mean())
         df["units_sold_7d_avg"] = df["units_sold"].rolling(window=7, min_periods=1).mean().fillna(df["units_sold"].mean())
-        df["football_match_hot_day"] = ((df["football_match"] == 1) & (df["temperature"] > 25)).astype(int)
-        df["football_match_high_sentiment"] = ((df["football_match"] == 1) & (df["customer_sentiment"] > 70)).astype(int)
+        df["hot_day"] = (df["temperature"] > 25).astype(int)
         df = pd.get_dummies(df, columns=["beer_type", "season", "region"], prefix=["beer", "season", "region"])
         
         return df
@@ -79,7 +78,7 @@ if uploaded_file:
                     "precipitation", "lead_time", "promotion", "day_of_week", 
                     "units_sold_lag1", "units_sold_7d_avg", "customer_sentiment", 
                     "competitor_promotion", "supply_chain_disruption", "units_sold_30d_avg", 
-                    "football_match_hot_day", "football_match_high_sentiment"] + \
+                    "hot_day"] + \
                    [col for col in df.columns if col.startswith("beer_") or col.startswith("season_") or col.startswith("region_")]
         X = df[features]
         y = df["units_sold"]
@@ -100,14 +99,10 @@ if uploaded_file:
 
         # --- Root Cause Hints ---
         def root_cause(row):
-            if row["football_match_high_sentiment"] == 1:
-                return "Football match + high sentiment"
-            elif row["football_match_hot_day"] == 1:
-                return "Hot day + football match"
+            if row["hot_day"] == 1:
+                return "Hot day"
             elif row["football_match"]:
                 return "Football match"
-            elif row["temperature"] > 25:
-                return "Hot day"
             elif row["precipitation"] > 10:
                 return "Rainy day"
             elif row["promotion"] == 1:
@@ -140,7 +135,7 @@ if uploaded_file:
         try:
             corr_features = ["units_sold", "temperature", "customer_sentiment", "precipitation", 
                              "lead_time", "units_sold_30d_avg", "units_sold_7d_avg", 
-                             "units_sold_lag1", "football_match_hot_day", "football_match_high_sentiment"]
+                             "units_sold_lag1", "hot_day"]
             show_full_matrix = st.checkbox("Show Full Correlation Matrix", value=True)
             corr_threshold = st.slider("Correlation Threshold (show values above this magnitude)", 0.0, 1.0, 0.3, 0.1)
             
@@ -203,7 +198,7 @@ if uploaded_file:
 
         # --- Anomalies ---
         st.subheader("🚨 Detected Anomalies")
-        st.write("This section highlights unexpected sales spikes or drops (red markers) with potential causes (e.g., football matches, high sentiment). Filter by cause to investigate.")
+        st.write("This section highlights unexpected sales spikes or drops (red markers) with potential causes (e.g., hot days, football matches). Filter by cause to investigate.")
         anomalies = df_filtered[df_filtered["anomaly"] == True]
         root_causes = sorted(anomalies["root_cause_hint"].unique())
         selected_causes = st.multiselect("Filter by Root Cause", root_causes, default=root_causes, key="anomaly_filter")
@@ -252,7 +247,7 @@ if uploaded_file:
 
         # --- Feature Importance ---
         st.subheader("📊 Feature Importance (retrained model)")
-        st.write("This chart shows which factors (e.g., football matches, customer sentiment) most influence sales predictions, helping prioritize inventory strategies.")
+        st.write("This chart shows which factors (e.g., hot days, football matches) most influence sales predictions, helping prioritize inventory strategies.")
         try:
             importance = model.feature_importances_
             categories = {
@@ -270,8 +265,7 @@ if uploaded_file:
                 "competitor_promotion": "Market",
                 "supply_chain_disruption": "Logistics",
                 "units_sold_30d_avg": "Historical",
-                "football_match_hot_day": "Event",
-                "football_match_high_sentiment": "Event"
+                "hot_day": "Weather"
             }
             for col in [c for c in df.columns if c.startswith("beer_")]:
                 categories[col] = "Product"
@@ -303,7 +297,7 @@ if uploaded_file:
 
         # --- Prediction Model Equation ---
         st.subheader("🧮 Prediction Model Equation")
-        st.write("This equation summarizes how key factors (e.g., past sales, events) contribute to the AI’s sales predictions, guiding inventory planning.")
+        st.write("This equation summarizes how key factors (e.g., past sales, hot days) contribute to the AI’s sales predictions, guiding inventory planning.")
         try:
             st.write("The prediction model is an XGBoost ensemble of 50 decision trees, each with a maximum depth of 2, and L1 regularization (reg_alpha=0.1).")
             st.write("The predicted units_sold is a weighted sum of contributions from the following features, based on their importance:")
