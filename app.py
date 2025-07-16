@@ -131,11 +131,14 @@ if uploaded_file:
 
         # --- Correlation Matrix ---
         st.subheader("🔗 Correlation Matrix")
-        st.write("This heatmap shows correlations between numerical features and sales. Values range from -1 (negative) to 1 (positive). Strong correlations (>0.5) indicate key demand drivers and are listed in the table below. Use the slider to filter weak correlations and the checkbox to focus on sales-related features.")
+        st.write("This heatmap shows correlations between all model features and sales, including numerical and categorical (one-hot encoded) features. Values range from -1 (negative) to 1 (positive). Strong correlations (>0.5) indicate key demand drivers and are listed in the table below. Use the slider to filter weak correlations and the checkbox to focus on sales-related features.")
         try:
-            corr_features = ["units_sold", "temperature", "customer_sentiment", "precipitation", 
-                             "lead_time", "units_sold_30d_avg", "units_sold_7d_avg", 
-                             "units_sold_lag1", "hot_day"]
+            corr_features = ["units_sold", "is_weekend", "temperature", "football_match", "holiday", 
+                             "precipitation", "lead_time", "promotion", "day_of_week", 
+                             "units_sold_lag1", "units_sold_7d_avg", "customer_sentiment", 
+                             "competitor_promotion", "supply_chain_disruption", "units_sold_30d_avg", 
+                             "hot_day"] + \
+                            [col for col in df_filtered.columns if col.startswith("beer_") or col.startswith("season_") or col.startswith("region_")]
             show_full_matrix = st.checkbox("Show Full Correlation Matrix", value=True)
             corr_threshold = st.slider("Correlation Threshold (show values above this magnitude)", 0.0, 1.0, 0.3, 0.1)
             
