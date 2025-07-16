@@ -6,8 +6,10 @@ import seaborn as sns
 from xgboost import XGBRegressor
 from sklearn.metrics import mean_absolute_error
 
-# Disable file watcher to prevent inotify errors
-st.set_option("server.fileWatcherType", "none")
+# Note: To prevent inotify errors on Streamlit Cloud, create a config.toml file in the project root with:
+# [server]
+# fileWatcherType = "none"
+# Alternatively, run locally with: streamlit run app.py --server.fileWatcherType none
 
 # Set Matplotlib dark theme for Chart.js-like visuals
 plt.style.use("dark_background")
