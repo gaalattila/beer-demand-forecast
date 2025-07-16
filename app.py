@@ -40,6 +40,15 @@ def load_and_process_data(file):
     except Exception as e:
         raise ValueError(f"Error processing data: {str(e)}")
 
+# Cache correlation matrix computation
+@st.cache_data
+def compute_correlation_matrix(df, features, threshold):
+    corr_matrix = df[features].corr()
+    if threshold > 0:
+        mask = (abs(corr_matrix) < threshold) & (corr_matrix != 1.0)
+        corr_matrix = corr_matrix.where(~mask, 0)
+    return corr_matrix
+
 # Upload file
 uploaded_file = st.file_uploader("📤 Upload raw input file (raw_beer_sales_data.csv)", type=["csv"])
 
@@ -117,7 +126,7 @@ if uploaded_file:
         df_filtered["root_cause_hint"] = df["root_cause_hint"][df_filtered.index]
 
         # --- Reorder Quantity ---
-        urban_buffer = np.where(df["region_Urban"] == 1, 1.2, 1.0)
+        urban_buffer = np.where(df["region_Urban"] == 1, 2, 1.0)
         disruption_buffer = np.where(df["supply_chain_disruption"] == 1, 1.5, 1.0)
         df["reorder_quantity"] = (df["predicted"] * (df["lead_time"] + 1) * 
                                  urban_buffer * disruption_buffer - 
@@ -127,15 +136,25 @@ if uploaded_file:
 
         # --- Correlation Matrix ---
         st.subheader("🔗 Correlation Matrix")
-        st.write("This heatmap shows Pearson correlations between numerical features and sales. Values range from -1 (negative correlation) to 1 (positive correlation). Strong positive correlations (e.g., football_match_hot_day or football_match_high_sentiment with units_sold, >0.5) indicate key demand drivers. High values suggest potential exponential effects, warranting further analysis (e.g., interaction plots).")
+        st.write("This heatmap shows correlations between numerical features and sales. Values range from -1 (negative) to 1 (positive). Strong correlations (>0.5, in bold) indicate key demand drivers. Use the slider to filter weak correlations and the checkbox to focus on sales-related features.")
         try:
             corr_features = ["units_sold", "temperature", "customer_sentiment", "precipitation", 
-                            "lead_time", "units_sold_30d_avg", "units_sold_7d_avg", 
-                            "units_sold_lag1", "football_match_hot_day", "football_match_high_sentiment"]
-            corr_matrix = df_filtered[corr_features].corr()
-            fig5, ax5 = plt.subplots(figsize=(10, 8))
-            sns.heatmap(corr_matrix, annot=True, cmap="coolwarm", center=0, 
-                       fmt=".2f", linewidths=0.5, ax=ax5, cbar_kws={"label": "Correlation"})
+                             "lead_time", "units_sold_30d_avg", "units_sold_7d_avg", 
+                             "units_sold_lag1", "football_match_hot_day", "football_match_high_sentiment"]
+            show_full_matrix = st.checkbox("Show Full Correlation Matrix", value=True)
+            corr_threshold = st.slider("Correlation Threshold (show values above this magnitude)", 0.0, 1.0, 0.3, 0.1)
+            
+            if not show_full_matrix:
+                # Filter features with high correlation to units_sold
+                corr_matrix_temp = df_filtered[corr_features].corr()
+                units_sold_corr = corr_matrix_temp["units_sold"].abs()
+                corr_features = [f for f in corr_features if f == "units_sold" or units_sold_corr[f] > 0.3]
+            
+            corr_matrix = compute_correlation_matrix(df_filtered, corr_features, corr_threshold)
+            fig5, ax5 = plt.subplots(figsize=(12, 10))
+            sns.heatmap(corr_matrix, annot=True, cmap="RdBu", center=0, fmt=".2f", 
+                        linewidths=0.5, ax=ax5, cbar_kws={"label": "Correlation"},
+                        annot_kws={"size": 10, "weight": lambda x: "bold" if abs(x) > 0.5 else "normal"})
             ax5.set_title(f"Correlation Matrix ({region_filter})", color="#ffffff", fontsize=16)
             ax5.tick_params(axis="x", colors="#ffffff", rotation=45)
             ax5.tick_params(axis="y", colors="#ffffff")
