@@ -174,6 +174,20 @@ if uploaded_file:
             with st.expander("📄 Feature Importance Table"):
                 st.dataframe(importance_df)
 
+            # --- Prediction Model Equation ---
+            st.subheader("🧮 Prediction Model Equation")
+            st.write("The prediction model is an XGBoost ensemble of 100 decision trees, each with a maximum depth of 2, and L1 regularization (reg_alpha=0.1).")
+            st.write("The predicted units_sold is a weighted sum of contributions from the following features, based on their importance:")
+            
+            # Display top 5 features and their importance
+            top_features = importance_df.head(5)[["feature", "importance"]]
+            equation = "Predicted units_sold ≈ "
+            equation += " + ".join([f"{row['importance']:.3f} * {row['feature']}" for _, row in top_features.iterrows()])
+            equation += " + other features"
+            st.write(equation)
+            with st.expander("📄 Top Feature Contributions"):
+                st.dataframe(top_features)
+
             # --- Download Enriched Output ---
             st.download_button(
                 label="📥 Download Forecast + Anomaly CSV",
