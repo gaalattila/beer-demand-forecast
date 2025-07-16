@@ -32,6 +32,7 @@ def load_and_process_data(file):
         df["day_of_week"] = df["date"].dt.dayofweek
         df["units_sold_lag1"] = df["units_sold"].shift(1).fillna(df["units_sold"].mean())
         df["units_sold_7d_avg"] = df["units_sold"].rolling(window=7, min_periods=1).mean().fillna(df["units_sold"].mean())
+        df["football_match_hot_day"] = ((df["football_match"] == 1) & (df["temperature"] > 25)).astype(int)
         df = pd.get_dummies(df, columns=["beer_type", "season", "region"], prefix=["beer", "season", "region"])
         
         return df
@@ -67,7 +68,7 @@ if uploaded_file:
         features = ["is_weekend", "temperature", "football_match", "holiday", 
                     "precipitation", "lead_time", "promotion", "day_of_week", 
                     "units_sold_lag1", "units_sold_7d_avg", "customer_sentiment", 
-                    "competitor_promotion", "supply_chain_disruption", "units_sold_30d_avg"] + \
+                    "competitor_promotion", "supply_chain_disruption", "units_sold_30d_avg", "football_match_hot_day"] + \
                    [col for col in df.columns if col.startswith("beer_") or col.startswith("season_") or col.startswith("region_")]
         X = df[features]
         y = df["units_sold"]
@@ -75,7 +76,7 @@ if uploaded_file:
         model = XGBRegressor(n_estimators=50, max_depth=2, reg_alpha=0.1)
         model.fit(X, y)
         df["predicted"] = model.predict(X)
-        df_filtered["predicted"] = df["predicted"][df_filtered.index]  # Align predictions with filtered data
+        df_filtered["predicted"] = df["predicted"][df_filtered.index]
         progress_bar.progress(40)
 
         # --- Anomaly Detection ---
@@ -88,7 +89,7 @@ if uploaded_file:
 
         # --- Root Cause Hints ---
         def root_cause(row):
-            if row["football_match"] and row["temperature"] > 25:
+            if row["football_match_hot_day"] == 1:
                 return "Hot day + football match"
             elif row["football_match"] and row["customer_sentiment"] > 70:
                 return "Football match + high sentiment"
@@ -114,13 +115,32 @@ if uploaded_file:
         df_filtered["root_cause_hint"] = df["root_cause_hint"][df_filtered.index]
 
         # --- Reorder Quantity ---
-        urban_buffer = np.where(df["region_Urban"] == 1, 1.2, 1.0)  # 20% buffer for Urban
-        disruption_buffer = np.where(df["supply_chain_disruption"] == 1, 1.5, 1.0)  # 50% buffer for disruptions
+        urban_buffer = np.where(df["region_Urban"] == 1, 1.2, 1.0)
+        disruption_buffer = np.where(df["supply_chain_disruption"] == 1, 1.5, 1.0)
         df["reorder_quantity"] = (df["predicted"] * (df["lead_time"] + 1) * 
                                  urban_buffer * disruption_buffer - 
                                  df["stock_level"]).clip(lower=0)
         df_filtered["reorder_quantity"] = df["reorder_quantity"][df_filtered.index]
         progress_bar.progress(80)
+
+        # --- Correlation Matrix ---
+        st.subheader("🔗 Correlation Matrix")
+        st.write("This heatmap shows Pearson correlations between numerical features and sales. Values range from -1 (negative correlation) to 1 (positive correlation). Strong positive correlations (e.g., football_match_hot_day with units_sold) indicate key demand drivers, like hot days with football matches boosting sales.")
+        try:
+            corr_features = ["units_sold", "temperature", "customer_sentiment", "precipitation", 
+                            "lead_time", "units_sold_30d_avg", "units_sold_7d_avg", 
+                            "units_sold_lag1", "football_match_hot_day"]
+            corr_matrix = df_filtered[corr_features].corr()
+            fig5, ax5 = plt.subplots(figsize=(10, 8))
+            sns.heatmap(corr_matrix, annot=True, cmap="coolwarm", center=0, 
+                       fmt=".2f", linewidths=0.5, ax=ax5, cbar_kws={"label": "Correlation"})
+            ax5.set_title(f"Correlation Matrix ({region_filter})", color="#ffffff", fontsize=16)
+            ax5.tick_params(axis="x", colors="#ffffff", rotation=45)
+            ax5.tick_params(axis="y", colors="#ffffff")
+            plt.tight_layout()
+            st.pyplot(fig5)
+        except Exception as e:
+            st.error(f"Error generating correlation matrix: {str(e)}")
 
         # --- Forecast Plot ---
         st.subheader("📈 Actual vs Predicted Sales")
@@ -216,7 +236,8 @@ if uploaded_file:
                 "customer_sentiment": "Social",
                 "competitor_promotion": "Market",
                 "supply_chain_disruption": "Logistics",
-                "units_sold_30d_avg": "Historical"
+                "units_sold_30d_avg": "Historical",
+                "football_match_hot_day": "Event"
             }
             for col in [c for c in df.columns if c.startswith("beer_")]:
                 categories[col] = "Product"
@@ -247,7 +268,8 @@ if uploaded_file:
             st.error(f"Error generating feature importance plot: {str(e)}")
 
         # --- Prediction Model Equation ---
-        st.subheader("🧮 Prediction Model Equation")
+        st.subhead
+er("🧮 Prediction Model Equation")
         st.write("This equation summarizes how key factors (e.g., past sales, events) contribute to the AI’s sales predictions, guiding inventory planning.")
         try:
             st.write("The prediction model is an XGBoost ensemble of 50 decision trees, each with a maximum depth of 2, and L1 regularization (reg_alpha=0.1).")
