@@ -103,11 +103,12 @@ if uploaded_file:
         df["root_cause_hint"] = df.apply(lambda row: root_cause(row) if row["anomaly"] else "", axis=1)
 
         # --- Reorder Quantity (Enhanced) ---
-        # Adjust reorder based on region and supply chain disruptions
+        # Use np.where for vectorized conditional logic
+        urban_buffer = np.where(df["region_Urban"] == 1, 1.2, 1.0)  # 20% buffer for Urban
+        disruption_buffer = np.where(df["supply_chain_disruption"] == 1, 1.5, 1.0)  # 50% buffer for disruptions
         df["reorder_quantity"] = (df["predicted"] * (df["lead_time"] + 1) * 
-                                (1.2 if df["region_Urban"] == 1 else 1.0) *  # Higher buffer for Urban
-                                (1.5 if df["supply_chain_disruption"] == 1 else 1.0) -  # Extra buffer for disruptions
-                                df["stock_level"]).clip(lower=0)
+                                 urban_buffer * disruption_buffer - 
+                                 df["stock_level"]).clip(lower=0)
         progress_bar.progress(80)
 
         # --- Forecast Plot ---
@@ -153,10 +154,10 @@ if uploaded_file:
                 ax2.tick_params(axis="y", colors="#ffffff")
                 ax2.legend(labelcolor="#ffffff")
                 plt.tight_layout()
+                st.pyplot(fig2)
+                st.dataframe(filtered[["date", "units_sold", "predicted", "root_cause_hint"]])
             except Exception as e:
                 st.error(f"Error generating anomalies plot: {str(e)}")
-            st.pyplot(fig2)
-            st.dataframe(filtered[["date", "units_sold", "predicted", "root_cause_hint"]])
         else:
             st.info("No anomalies match the selected root causes.")
 
