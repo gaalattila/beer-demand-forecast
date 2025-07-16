@@ -24,7 +24,8 @@ def load_and_process_data(file):
         df = pd.read_csv(file, parse_dates=["date"])
         
         required_cols = {"date", "units_sold", "is_weekend", "temperature", "football_match", "holiday", "season", 
-                        "precipitation", "lead_time", "beer_type", "promotion", "stock_level"}
+                        "precipitation", "lead_time", "beer_type", "promotion", "stock_level", 
+                        "customer_sentiment", "competitor_promotion", "region", "supply_chain_disruption", "units_sold_30d_avg"}
         if not required_cols.issubset(df.columns):
             raise ValueError(f"CSV must include columns: {required_cols}")
         
@@ -32,7 +33,7 @@ def load_and_process_data(file):
         df["day_of_week"] = df["date"].dt.dayofweek
         df["units_sold_lag1"] = df["units_sold"].shift(1).fillna(df["units_sold"].mean())
         df["units_sold_7d_avg"] = df["units_sold"].rolling(window=7, min_periods=1).mean().fillna(df["units_sold"].mean())
-        df = pd.get_dummies(df, columns=["beer_type", "season"], prefix=["beer", "season"])
+        df = pd.get_dummies(df, columns=["beer_type", "season", "region"], prefix=["beer", "season", "region"])
         
         return df
     except Exception as e:
@@ -57,8 +58,9 @@ if uploaded_file:
         status_text.text("Training model...")
         features = ["is_weekend", "temperature", "football_match", "holiday", 
                     "precipitation", "lead_time", "promotion", "day_of_week", 
-                    "units_sold_lag1", "units_sold_7d_avg"] + \
-                   [col for col in df.columns if col.startswith("beer_") or col.startswith("season_")]
+                    "units_sold_lag1", "units_sold_7d_avg", "customer_sentiment", 
+                    "competitor_promotion", "supply_chain_disruption", "units_sold_30d_avg"] + \
+                   [col for col in df.columns if col.startswith("beer_") or col.startswith("season_") or col.startswith("region_")]
         X = df[features]
         y = df["units_sold"]
 
@@ -78,6 +80,8 @@ if uploaded_file:
         def root_cause(row):
             if row["football_match"] and row["temperature"] > 25:
                 return "Hot day + football match"
+            elif row["football_match"] and row["customer_sentiment"] > 70:
+                return "Football match + high sentiment"
             elif row["football_match"]:
                 return "Football match"
             elif row["temperature"] > 25:
@@ -90,17 +94,24 @@ if uploaded_file:
                 return "Weekend spike"
             elif row["lead_time"] > 5:
                 return "Delayed restock"
+            elif row["competitor_promotion"] == 1:
+                return "Competitor promotion"
+            elif row["supply_chain_disruption"] == 1:
+                return "Supply chain disruption"
             return "Unexplained"
 
         df["root_cause_hint"] = df.apply(lambda row: root_cause(row) if row["anomaly"] else "", axis=1)
 
-        # --- Reorder Quantity ---
-        df["reorder_quantity"] = (df["predicted"] * (df["lead_time"] + 1) - df["stock_level"]).clip(lower=0)
+        # --- Reorder Quantity (Enhanced) ---
+        # Adjust reorder based on region and supply chain disruptions
+        df["reorder_quantity"] = (df["predicted"] * (df["lead_time"] + 1) * 
+                                (1.2 if df["region_Urban"] == 1 else 1.0) *  # Higher buffer for Urban
+                                (1.5 if df["supply_chain_disruption"] == 1 else 1.0) -  # Extra buffer for disruptions
+                                df["stock_level"]).clip(lower=0)
         progress_bar.progress(80)
 
         # --- Forecast Plot ---
         st.subheader("📈 Actual vs Predicted Sales")
-        # Debug: Check data integrity
         if df["units_sold"].isna().any() or df["predicted"].isna().any():
             st.warning("NaN values detected in units_sold or predicted. Filling with mean for plotting.")
             df["units_sold"] = df["units_sold"].fillna(df["units_sold"].mean())
@@ -142,10 +153,10 @@ if uploaded_file:
                 ax2.tick_params(axis="y", colors="#ffffff")
                 ax2.legend(labelcolor="#ffffff")
                 plt.tight_layout()
-                st.pyplot(fig2)
-                st.dataframe(filtered[["date", "units_sold", "predicted", "root_cause_hint"]])
             except Exception as e:
                 st.error(f"Error generating anomalies plot: {str(e)}")
+            st.pyplot(fig2)
+            st.dataframe(filtered[["date", "units_sold", "predicted", "root_cause_hint"]])
         else:
             st.info("No anomalies match the selected root causes.")
 
@@ -184,12 +195,18 @@ if uploaded_file:
                 "promotion": "Marketing",
                 "day_of_week": "Temporal",
                 "units_sold_lag1": "Historical",
-                "units_sold_7d_avg": "Historical"
+                "units_sold_7d_avg": "Historical",
+                "customer_sentiment": "Social",
+                "competitor_promotion": "Market",
+                "supply_chain_disruption": "Logistics",
+                "units_sold_30d_avg": "Historical"
             }
             for col in [c for c in df.columns if c.startswith("beer_")]:
                 categories[col] = "Product"
             for col in [c for c in df.columns if c.startswith("season_")]:
                 categories[col] = "Seasonal"
+            for col in [c for c in df.columns if c.startswith("region_")]:
+                categories[col] = "Regional"
 
             importance_df = pd.DataFrame({
                 "feature": features,
