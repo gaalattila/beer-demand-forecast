@@ -126,7 +126,7 @@ if uploaded_file:
         df_filtered["root_cause_hint"] = df["root_cause_hint"][df_filtered.index]
 
         # --- Reorder Quantity ---
-        urban_buffer = np.where(df["region_Urban"] == 1, 2, 1.0)
+        urban_buffer = np.where(df["region_Urban"] == 1, 1.2, 1.0)
         disruption_buffer = np.where(df["supply_chain_disruption"] == 1, 1.5, 1.0)
         df["reorder_quantity"] = (df["predicted"] * (df["lead_time"] + 1) * 
                                  urban_buffer * disruption_buffer - 
@@ -136,7 +136,7 @@ if uploaded_file:
 
         # --- Correlation Matrix ---
         st.subheader("🔗 Correlation Matrix")
-        st.write("This heatmap shows correlations between numerical features and sales. Values range from -1 (negative) to 1 (positive). Strong correlations (>0.5, in bold) indicate key demand drivers. Use the slider to filter weak correlations and the checkbox to focus on sales-related features.")
+        st.write("This heatmap shows correlations between numerical features and sales. Values range from -1 (negative) to 1 (positive). Strong correlations (>0.5) indicate key demand drivers and are listed in the table below. Use the slider to filter weak correlations and the checkbox to focus on sales-related features.")
         try:
             corr_features = ["units_sold", "temperature", "customer_sentiment", "precipitation", 
                              "lead_time", "units_sold_30d_avg", "units_sold_7d_avg", 
@@ -145,7 +145,6 @@ if uploaded_file:
             corr_threshold = st.slider("Correlation Threshold (show values above this magnitude)", 0.0, 1.0, 0.3, 0.1)
             
             if not show_full_matrix:
-                # Filter features with high correlation to units_sold
                 corr_matrix_temp = df_filtered[corr_features].corr()
                 units_sold_corr = corr_matrix_temp["units_sold"].abs()
                 corr_features = [f for f in corr_features if f == "units_sold" or units_sold_corr[f] > 0.3]
@@ -154,12 +153,25 @@ if uploaded_file:
             fig5, ax5 = plt.subplots(figsize=(12, 10))
             sns.heatmap(corr_matrix, annot=True, cmap="RdBu", center=0, fmt=".2f", 
                         linewidths=0.5, ax=ax5, cbar_kws={"label": "Correlation"},
-                        annot_kws={"size": 10, "weight": lambda x: "bold" if abs(x) > 0.5 else "normal"})
+                        annot_kws={"size": 10, "weight": "bold"})
             ax5.set_title(f"Correlation Matrix ({region_filter})", color="#ffffff", fontsize=16)
             ax5.tick_params(axis="x", colors="#ffffff", rotation=45)
             ax5.tick_params(axis="y", colors="#ffffff")
             plt.tight_layout()
             st.pyplot(fig5)
+
+            # Table of strong correlations with units_sold
+            st.write("**Strong Correlations with Units Sold (|correlation| > 0.5)**")
+            units_sold_corr = corr_matrix["units_sold"].drop("units_sold")
+            strong_corr = units_sold_corr[units_sold_corr.abs() > 0.5].sort_values(ascending=False)
+            if not strong_corr.empty:
+                strong_corr_df = pd.DataFrame({
+                    "Feature": strong_corr.index,
+                    "Correlation with Units Sold": strong_corr.values
+                })
+                st.dataframe(strong_corr_df)
+            else:
+                st.info("No correlations with units_sold exceed |0.5|.")
         except Exception as e:
             st.error(f"Error generating correlation matrix: {str(e)}")
 
