@@ -33,6 +33,7 @@ def load_and_process_data(file):
         df["units_sold_lag1"] = df["units_sold"].shift(1).fillna(df["units_sold"].mean())
         df["units_sold_7d_avg"] = df["units_sold"].rolling(window=7, min_periods=1).mean().fillna(df["units_sold"].mean())
         df["football_match_hot_day"] = ((df["football_match"] == 1) & (df["temperature"] > 25)).astype(int)
+        df["football_match_high_sentiment"] = ((df["football_match"] == 1) & (df["customer_sentiment"] > 70)).astype(int)
         df = pd.get_dummies(df, columns=["beer_type", "season", "region"], prefix=["beer", "season", "region"])
         
         return df
@@ -68,7 +69,8 @@ if uploaded_file:
         features = ["is_weekend", "temperature", "football_match", "holiday", 
                     "precipitation", "lead_time", "promotion", "day_of_week", 
                     "units_sold_lag1", "units_sold_7d_avg", "customer_sentiment", 
-                    "competitor_promotion", "supply_chain_disruption", "units_sold_30d_avg", "football_match_hot_day"] + \
+                    "competitor_promotion", "supply_chain_disruption", "units_sold_30d_avg", 
+                    "football_match_hot_day", "football_match_high_sentiment"] + \
                    [col for col in df.columns if col.startswith("beer_") or col.startswith("season_") or col.startswith("region_")]
         X = df[features]
         y = df["units_sold"]
@@ -89,10 +91,10 @@ if uploaded_file:
 
         # --- Root Cause Hints ---
         def root_cause(row):
-            if row["football_match_hot_day"] == 1:
-                return "Hot day + football match"
-            elif row["football_match"] and row["customer_sentiment"] > 70:
+            if row["football_match_high_sentiment"] == 1:
                 return "Football match + high sentiment"
+            elif row["football_match_hot_day"] == 1:
+                return "Hot day + football match"
             elif row["football_match"]:
                 return "Football match"
             elif row["temperature"] > 25:
@@ -125,11 +127,11 @@ if uploaded_file:
 
         # --- Correlation Matrix ---
         st.subheader("🔗 Correlation Matrix")
-        st.write("This heatmap shows Pearson correlations between numerical features and sales. Values range from -1 (negative correlation) to 1 (positive correlation). Strong positive correlations (e.g., football_match_hot_day with units_sold) indicate key demand drivers, like hot days with football matches boosting sales.")
+        st.write("This heatmap shows Pearson correlations between numerical features and sales. Values range from -1 (negative correlation) to 1 (positive correlation). Strong positive correlations (e.g., football_match_hot_day or football_match_high_sentiment with units_sold, >0.5) indicate key demand drivers. High values suggest potential exponential effects, warranting further analysis (e.g., interaction plots).")
         try:
             corr_features = ["units_sold", "temperature", "customer_sentiment", "precipitation", 
                             "lead_time", "units_sold_30d_avg", "units_sold_7d_avg", 
-                            "units_sold_lag1", "football_match_hot_day"]
+                            "units_sold_lag1", "football_match_hot_day", "football_match_high_sentiment"]
             corr_matrix = df_filtered[corr_features].corr()
             fig5, ax5 = plt.subplots(figsize=(10, 8))
             sns.heatmap(corr_matrix, annot=True, cmap="coolwarm", center=0, 
@@ -237,7 +239,8 @@ if uploaded_file:
                 "competitor_promotion": "Market",
                 "supply_chain_disruption": "Logistics",
                 "units_sold_30d_avg": "Historical",
-                "football_match_hot_day": "Event"
+                "football_match_hot_day": "Event",
+                "football_match_high_sentiment": "Event"
             }
             for col in [c for c in df.columns if c.startswith("beer_")]:
                 categories[col] = "Product"
@@ -268,8 +271,7 @@ if uploaded_file:
             st.error(f"Error generating feature importance plot: {str(e)}")
 
         # --- Prediction Model Equation ---
-        st.subhead
-er("🧮 Prediction Model Equation")
+        st.subheader("🧮 Prediction Model Equation")
         st.write("This equation summarizes how key factors (e.g., past sales, events) contribute to the AI’s sales predictions, guiding inventory planning.")
         try:
             st.write("The prediction model is an XGBoost ensemble of 50 decision trees, each with a maximum depth of 2, and L1 regularization (reg_alpha=0.1).")
