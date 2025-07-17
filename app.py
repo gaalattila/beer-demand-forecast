@@ -106,36 +106,41 @@ st.markdown(
         text-transform: uppercase;
         letter-spacing: 0.5px;
     }
-    /* Style for What-If Analysis block */
-    .what-if-block {
+    /* Style for What-If Analysis container */
+    .what-if-container {
         background-color: white;
         border-radius: 12px;
         box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
         padding: 15px;
         margin-bottom: 15px;
     }
-    .what-if-block h3 {
+    .what-if-container h3 {
         color: #007aff;
         font-size: 1.2em;
         margin-bottom: 15px;
         border-bottom: 1px solid #e0e0e0;
         padding-bottom: 10px;
     }
-    .what-if-block p {
+    .what-if-container p {
         color: #6e6e6e;
         font-size: 0.9em;
         margin: 0 0 15px 0;
     }
-    .what-if-block .stForm {
-        padding: 0;
-        display: flex;
-        flex-direction: column;
-        gap: 10px;
+    .what-if-card {
+        background-color: #f9f9f9;
+        border-radius: 8px;
+        padding: 10px;
+        margin-bottom: 10px;
     }
-    .what-if-block .stForm > div {
-        margin: 0;
+    .what-if-card h4 {
+        color: #007aff;
+        font-size: 1em;
+        margin-bottom: 5px;
     }
-    .what-if-block .stForm .stFormSubmitButton {
+    .what-if-card .stForm > div {
+        margin: 5px 0;
+    }
+    .what-if-container .stForm .stFormSubmitButton {
         align-self: flex-start;
         margin-top: 10px;
     }
@@ -403,57 +408,90 @@ if df is not None:
             except Exception as e:
                 st.error(f"Future data error: {str(e)}")
 
-        st.markdown('<div class="what-if-block">', unsafe_allow_html=True)
+        st.markdown('<div class="what-if-container">', unsafe_allow_html=True)
         st.markdown('<h3>🔍 What-If Analysis</h3>', unsafe_allow_html=True)
         st.markdown('<p>Simulate sales for a custom scenario. Adjust inputs (e.g., weather, promotions) and click "Predict Sales" to see the result. Interpret the prediction as an estimate with ±MAE uncertainty based on historical accuracy.</p>', unsafe_allow_html=True)
-        with st.container():
-            with st.form(key="what_if_form_v6"):
-                col1, col2 = st.columns(2)
-                with col1:
-                    date = st.date_input("Date", value=pd.to_datetime("2025-07-17"), key="wi_date")
-                    is_weekend = st.checkbox("Weekend", key="wi_weekend")
-                    temp = st.slider("Temp (°C)", 0.0, 40.0, 20.0, key="wi_temp")
-                    football = st.checkbox("Football", key="wi_football")
-                    holiday = st.checkbox("Holiday", key="wi_holiday")
-                    season = st.selectbox("Season", ["Spring", "Summer", "Fall", "Winter"], key="wi_season")
-                    precip = st.slider("Precip (mm)", 0.0, 50.0, 0.0, key="wi_precip")
-                with col2:
-                    lead = st.number_input("Lead Time", 0, 10, 3, key="wi_lead")
-                    beer = st.selectbox("Beer Type", df["beer_type"].unique() if "beer_type" in df.columns else ["Lager"], key="wi_beer")
-                    promo = st.checkbox("Promotion", key="wi_promo")
-                    stock = st.number_input("Stock", 0, 1000, 100, key="wi_stock")
-                    sentiment = st.slider("Sentiment", -1.0, 1.0, 0.0, key="wi_sent")
-                    comp_promo = st.checkbox("Comp Promo", key="wi_comp")
-                    region = st.selectbox("Region", ["Urban", "Suburban", "Rural"], key="wi_region")
-                    disruption = st.checkbox("Disruption", key="wi_disrupt")
-                    avg_sales = st.number_input("30d Avg", 0.0, 1000.0, df["units_sold"].mean(), key="wi_avg")
-                
-                submitted = st.form_submit_button("Predict Sales")
-                
-                if submitted:
-                    try:
-                        lag1_mean = df["units_sold_lag1"].mean() if "units_sold_lag1" in df.columns else df["units_sold"].mean()
-                        avg7d_mean = df["units_sold_7d_avg"].mean() if "units_sold_7d_avg" in df.columns else df["units_sold"].mean()
-                        scenario = pd.DataFrame({
-                            "date": [pd.to_datetime(date)], "is_weekend": [1 if is_weekend else 0],
-                            "temperature": [temp], "football_match": [1 if football else 0],
-                            "holiday": [1 if holiday else 0], "season": [season],
-                            "precipitation": [precip], "lead_time": [lead], "beer_type": [beer],
-                            "promotion": [1 if promo else 0], "stock_level": [stock],
-                            "customer_sentiment": [sentiment], "competitor_promotion": [1 if comp_promo else 0],
-                            "region": [region], "supply_chain_disruption": [1 if disruption else 0],
-                            "units_sold_30d_avg": [avg_sales], "units_sold_lag1": [lag1_mean],
-                            "units_sold_7d_avg": [avg7d_mean]
-                        })
-                        scenario = load_and_process_data(io.StringIO(scenario.to_csv(index=False)), is_future=True)
-                        if scenario is not None:
-                            scenario = align_features(scenario, df, features)
-                            pred = model.predict(scenario[features])[0]
-                            st.success(f"Predicted: {pred:.2f} ±{mae:.2f}")
-                    except Exception as e:
-                        st.error(f"Scenario error: {str(e)}")
-                else:
-                    st.info("Click 'Predict Sales' to see results.")
+        with st.form(key="what_if_form_v6"):
+            # Temporal Factors
+            st.markdown('<div class="what-if-card"><h4>🗓️ Temporal Factors</h4></div>', unsafe_allow_html=True)
+            col1, col2 = st.columns(2)
+            with col1:
+                date = st.date_input("Date", value=pd.to_datetime("2025-07-17"), key="wi_date")
+                is_weekend = st.checkbox("Weekend", key="wi_weekend")
+            with col2:
+                holiday = st.checkbox("Holiday", key="wi_holiday")
+                football = st.checkbox("Football Match", key="wi_football")
+
+            # Weather Conditions
+            st.markdown('<div class="what-if-card"><h4>🌡️ Weather Conditions</h4></div>', unsafe_allow_html=True)
+            col1, col2 = st.columns(2)
+            with col1:
+                temp = st.slider("Temperature (°C)", 0.0, 40.0, 20.0, key="wi_temp")
+            with col2:
+                precip = st.slider("Precipitation (mm)", 0.0, 50.0, 0.0, key="wi_precip")
+
+            # Inventory & Logistics
+            st.markdown('<div class="what-if-card"><h4>📦 Inventory & Logistics</h4></div>', unsafe_allow_html=True)
+            col1, col2 = st.columns(2)
+            with col1:
+                stock = st.number_input("Stock", 0, 1000, 100, key="wi_stock")
+                lead = st.number_input("Lead Time", 0, 10, 3, key="wi_lead")
+            with col2:
+                disruption = st.checkbox("Supply Disruption", key="wi_disrupt")
+
+            # Marketing & Market
+            st.markdown('<div class="what-if-card"><h4>📢 Marketing & Market</h4></div>', unsafe_allow_html=True)
+            col1, col2 = st.columns(2)
+            with col1:
+                promo = st.checkbox("Promotion", key="wi_promo")
+                comp_promo = st.checkbox("Competitor Promo", key="wi_comp")
+            with col2:
+                sentiment = st.slider("Customer Sentiment", -1.0, 1.0, 0.0, key="wi_sent")
+
+            # Product Context
+            st.markdown('<div class="what-if-card"><h4>🍺 Product Context</h4></div>', unsafe_allow_html=True)
+            col1, col2 = st.columns(2)
+            with col1:
+                beer = st.selectbox("Beer Type", df["beer_type"].unique() if "beer_type" in df.columns else ["Lager"], key="wi_beer")
+                region = st.selectbox("Region", ["Urban", "Suburban", "Rural"], key="wi_region")
+            with col2:
+                season = st.selectbox("Season", ["Spring", "Summer", "Fall", "Winter"], key="wi_season")
+
+            # Sales History Input
+            st.markdown('<div class="what-if-card"><h4>📊 Sales History Input</h4></div>', unsafe_allow_html=True)
+            col1, col2 = st.columns(2)
+            with col1:
+                avg_sales = st.number_input("30d Avg", 0.0, 1000.0, df["units_sold"].mean(), key="wi_avg")
+            with col2:
+                # Note: lag1 and 7d avg are calculated internally, not user inputs
+                pass
+
+            submitted = st.form_submit_button("Predict Sales")
+            
+            if submitted:
+                try:
+                    lag1_mean = df["units_sold_lag1"].mean() if "units_sold_lag1" in df.columns else df["units_sold"].mean()
+                    avg7d_mean = df["units_sold_7d_avg"].mean() if "units_sold_7d_avg" in df.columns else df["units_sold"].mean()
+                    scenario = pd.DataFrame({
+                        "date": [pd.to_datetime(date)], "is_weekend": [1 if is_weekend else 0],
+                        "temperature": [temp], "football_match": [1 if football else 0],
+                        "holiday": [1 if holiday else 0], "season": [season],
+                        "precipitation": [precip], "lead_time": [lead], "beer_type": [beer],
+                        "promotion": [1 if promo else 0], "stock_level": [stock],
+                        "customer_sentiment": [sentiment], "competitor_promotion": [1 if comp_promo else 0],
+                        "region": [region], "supply_chain_disruption": [1 if disruption else 0],
+                        "units_sold_30d_avg": [avg_sales], "units_sold_lag1": [lag1_mean],
+                        "units_sold_7d_avg": [avg7d_mean]
+                    })
+                    scenario = load_and_process_data(io.StringIO(scenario.to_csv(index=False)), is_future=True)
+                    if scenario is not None:
+                        scenario = align_features(scenario, df, features)
+                        pred = model.predict(scenario[features])[0]
+                        st.success(f"Predicted: {pred:.2f} ±{mae:.2f}")
+                except Exception as e:
+                    st.error(f"Scenario error: {str(e)}")
+            else:
+                st.info("Click 'Predict Sales' to see results")
         st.markdown('</div>', unsafe_allow_html=True)
 
         st.markdown('<div class="card"><h3>📥 Download Historical Data</h3><p>Download the filtered historical data with predictions. Use to export results for further analysis; includes all columns shown in the dashboard.</p></div>', unsafe_allow_html=True)
