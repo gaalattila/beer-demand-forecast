@@ -123,9 +123,16 @@ st.markdown(
     }
     .what-if-block .stForm {
         padding: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
     }
     .what-if-block .stForm > div {
-        margin-bottom: 10px;
+        margin: 0;
+    }
+    .what-if-block .stForm .stFormSubmitButton {
+        align-self: flex-start;
+        margin-top: 10px;
     }
     </style>
     """,
@@ -416,13 +423,10 @@ if df is not None:
                     disruption = st.checkbox("Disruption", key="wi_disrupt")
                     avg_sales = st.number_input("30d Avg", 0.0, 1000.0, df["units_sold"].mean(), key="wi_avg")
                 
-                st.write("Debug: Form elements loaded.")
                 submitted = st.form_submit_button("Predict Sales")
-                st.write("Debug: Submit button rendered.")
                 
                 if submitted:
                     try:
-                        st.write("Debug: Form submitted.")
                         lag1_mean = df["units_sold_lag1"].mean() if "units_sold_lag1" in df.columns else df["units_sold"].mean()
                         avg7d_mean = df["units_sold_7d_avg"].mean() if "units_sold_7d_avg" in df.columns else df["units_sold"].mean()
                         scenario = pd.DataFrame({
