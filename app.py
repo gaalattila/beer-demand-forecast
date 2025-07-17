@@ -19,7 +19,7 @@ def load_and_process_data(file_path, is_future=False):
     try:
         if isinstance(file_path, str):
             df = pd.read_csv(file_path, parse_dates=["date"])
-        else:  # Handle file uploader object
+        else:
             df = pd.read_csv(file_path, parse_dates=["date"])
         
         required_cols = {"date", "is_weekend", "temperature", "football_match", "holiday", "season",
@@ -34,7 +34,7 @@ def load_and_process_data(file_path, is_future=False):
                     if col in ["customer_sentiment", "competitor_promotion", "promotion", "supply_chain_disruption"]:
                         df[col] = 0
                     elif col == "beer_type":
-                        df[col] = "Lager"  # Default if missing
+                        df[col] = "Lager"
                     else:
                         raise ValueError(f"Missing column(s): {missing_cols}")
             else:
@@ -73,7 +73,7 @@ def align_features(future_df, train_df, features):
                 future_df[col] = train_df["units_sold"].mean()
     return future_df[[col for col in future_df.columns if col in features or col == "date"]]
 
-# Check if data file exists in repo
+# Load data from repo or uploader
 data_file = "raw_beer_sales_data.csv"
 if os.path.exists(data_file):
     df = load_and_process_data(data_file, is_future=False)
@@ -260,7 +260,8 @@ if df is not None:
                     st.write("**Predictions**")
                     st.dataframe(future_df_filtered[["date", "predicted", "uncertainty"] + [c for c in future_df.columns if c in ["temperature", "football_match", "promotion"]]])
                     st.download_button("📥 Predictions", data=future_df_filtered.to_csv(index=False).encode(), file_name=f"future_{future_region.lower()}.csv", mime="text/csv")
-            except Exception as e: st.error(f"Future data error: {str(e)}")
+            except Exception as e:
+                st.error(f"Future data error: {str(e)}")
 
         st.subheader("🔍 What-If Analysis")
         st.write("Predict for a custom scenario.")
@@ -286,7 +287,7 @@ if df is not None:
                 avg_sales = st.number_input("30d Avg", 0.0, 1000.0, df["units_sold"].mean(), key="wi_avg")
             
             submitted = st.form_submit_button("Predict Sales")
-            st.write("Debug: Form active.")  # Debug confirmation
+            st.write("Debug: Form active.")
             
             if submitted:
                 try:
