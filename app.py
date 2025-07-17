@@ -8,15 +8,22 @@ from sklearn.metrics import mean_absolute_error
 import io
 import os
 
-# Set Matplotlib style for readable text
+# Set Matplotlib style for iOS-inspired graphs
+plt.rcParams['font.family'] = 'San Francisco'  # iOS default font (approximated with system sans-serif)
 plt.rcParams['text.color'] = '#6e6e6e'
 plt.rcParams['axes.labelcolor'] = '#6e6e6e'
 plt.rcParams['xtick.color'] = '#6e6e6e'
 plt.rcParams['ytick.color'] = '#6e6e6e'
 plt.rcParams['legend.labelcolor'] = '#6e6e6e'
-plt.rcParams['axes.titlecolor'] = '#007aff'  # iOS blue for titles
+plt.rcParams['axes.titlecolor'] = '#007aff'
+plt.rcParams['axes.edgecolor'] = '#e0e0e0'
+plt.rcParams['axes.facecolor'] = 'white'
+plt.rcParams['figure.facecolor'] = 'white'
+plt.rcParams['grid.color'] = '#f0f0f0'
+plt.rcParams['grid.linestyle'] = '-'
+plt.rcParams['grid.linewidth'] = 0.5
 
-# Custom CSS for iOS-style UX with readable text
+# Custom CSS for iOS-style UX with readable text and styled graphs/tables
 st.markdown(
     """
     <style>
@@ -66,12 +73,34 @@ st.markdown(
         border-radius: 10px;
         box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
     }
-    /* Ensure plot text is readable */
+    /* Style for Matplotlib graphs */
     .matplotlib-plot {
-        color: #6e6e6e !important;
+        border-radius: 12px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        background-color: white !important;
+        padding: 10px;
     }
-    .matplotlib-title, .matplotlib-label, .matplotlib-legend {
-        color: #6e6e6e !important;
+    /* Style for tables */
+    .stDataFrame {
+        background-color: white;
+        border-radius: 12px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        padding: 10px;
+        border: 1px solid #e0e0e0;
+    }
+    .stDataFrame table {
+        border-collapse: separate;
+        border-spacing: 0 5px;
+    }
+    .stDataFrame th, .stDataFrame td {
+        border: 1px solid #e0e0e0;
+        padding: 8px;
+        background-color: white;
+        text-align: left;
+    }
+    .stDataFrame th {
+        background-color: #f0f0f0;
+        font-weight: 500;
     }
     </style>
     """,
@@ -221,6 +250,9 @@ if df is not None:
             fig, ax = plt.subplots(figsize=(10, 5))
             sns.barplot(data=importance_df, x="importance", y="feature", hue="category", ax=ax)
             ax.set_title("Feature Importance")
+            for spine in ax.spines.values():
+                spine.set_visible(False)
+            ax.grid(True)
             st.pyplot(fig)
             with st.expander("Table"): st.dataframe(importance_df)
         except Exception as e: st.error(f"Feature importance error: {str(e)}")
@@ -235,6 +267,9 @@ if df is not None:
             fig, ax = plt.subplots(figsize=(10, 8))
             sns.heatmap(corr_matrix, annot=True, cmap="RdBu", center=0, fmt=".2f", ax=ax)
             ax.set_title("Correlation Matrix")
+            for spine in ax.spines.values():
+                spine.set_visible(False)
+            ax.grid(True)
             st.pyplot(fig)
             strong_corr = corr_matrix["units_sold"].drop("units_sold")[abs(corr_matrix["units_sold"].drop("units_sold")) > 0.5]
             if not strong_corr.empty:
@@ -251,6 +286,9 @@ if df is not None:
             sns.lineplot(data=df_filtered, x="date", y="units_sold", label="Actual", ax=ax, color="#1f77b4")
             sns.lineplot(data=df_filtered, x="date", y="predicted", label="Predicted", ax=ax, color="#ff7f0e", linestyle="--")
             ax.set_title(f"Actual vs Predicted ({region_filter})")
+            for spine in ax.spines.values():
+                spine.set_visible(False)
+            ax.grid(True)
             st.pyplot(fig)
         except Exception as e: st.error(f"Forecast error: {str(e)}")
 
@@ -265,6 +303,9 @@ if df is not None:
                 sns.lineplot(data=df_filtered, x="date", y="units_sold", label="Actual", ax=ax, color="#1f77b4")
                 sns.scatterplot(data=filtered_anomalies, x="date", y="units_sold", color="red", label="Anomaly", ax=ax)
                 ax.set_title(f"Anomalies ({region_filter})")
+                for spine in ax.spines.values():
+                    spine.set_visible(False)
+                ax.grid(True)
                 st.pyplot(fig)
                 st.dataframe(filtered_anomalies[["date", "units_sold", "predicted", "root_cause_hint"]])
             except Exception as e: st.error(f"Anomaly plot error: {str(e)}")
@@ -276,6 +317,9 @@ if df is not None:
             sns.lineplot(data=df_filtered, x="date", y="predicted", label="Predicted", ax=ax, color="#ff7f0e", linestyle="--")
             sns.lineplot(data=df_filtered, x="date", y="stock_level", label="Stock", ax=ax, color="#2ca02c")
             ax.set_title(f"Stock vs Demand ({region_filter})")
+            for spine in ax.spines.values():
+                spine.set_visible(False)
+            ax.grid(True)
             st.pyplot(fig)
         except Exception as e: st.error(f"Stock plot error: {str(e)}")
 
