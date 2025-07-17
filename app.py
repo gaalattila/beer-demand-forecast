@@ -8,7 +8,7 @@ from sklearn.metrics import mean_absolute_error
 import io
 import os
 
-# Custom CSS for iOS-style UX
+# Custom CSS for iOS-style UX with readable text
 st.markdown(
     """
     <style>
@@ -51,6 +51,13 @@ st.markdown(
     .stExpander {
         border-radius: 10px;
         box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    }
+    /* Ensure plot text is readable */
+    .matplotlib-plot {
+        color: #6e6e6e !important;
+    }
+    .matplotlib-title, .matplotlib-label, .matplotlib-legend {
+        color: #6e6e6e !important;
     }
     </style>
     """,
