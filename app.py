@@ -86,10 +86,12 @@ else:
 if df is not None:
     try:
         st.subheader("🌍 Regional Dashboard")
+        st.write("**Description**: Filter sales data by region to analyze trends. Select 'All' for overall data or a specific region (Urban, Suburban, Rural) to focus on localized patterns. Interpret the filtered data as a subset of total sales influenced by regional factors.")
         region_filter = st.selectbox("Region", ["All", "Urban", "Suburban", "Rural"])
         df_filtered = df if region_filter == "All" else df[df[f"region_{region_filter}"] == 1]
 
         st.subheader("⚙️ Model Hyperparameters")
+        st.write("**Description**: Adjust the XGBoost model's complexity. 'Trees' controls the number of decision trees, 'Depth' limits tree depth, and 'L1 Reg' adds regularization. Higher values increase accuracy but may overfit; interpret as a trade-off between precision and generalization.")
         n_estimators = st.slider("Trees", 10, 200, 50, 10)
         max_depth = st.slider("Depth", 1, 10, 2, 1)
         reg_alpha = st.slider("L1 Reg", 0.0, 1.0, 0.1, 0.05)
@@ -149,6 +151,7 @@ if df is not None:
         df_filtered["reorder_quantity"] = df["reorder_quantity"][df_filtered.index]
 
         st.subheader("📊 Feature Importance")
+        st.write("**Description**: Shows the relative impact of each feature on sales predictions. Higher bars indicate stronger influence. Interpret by category (e.g., Weather, Historical) to understand key drivers.")
         try:
             fig, ax = plt.subplots(figsize=(10, 5))
             sns.barplot(data=importance_df, x="importance", y="feature", hue="category", ax=ax)
@@ -160,6 +163,7 @@ if df is not None:
         except Exception as e: st.error(f"Feature importance error: {str(e)}")
 
         st.subheader("🔗 Correlation Matrix")
+        st.write("**Description**: Displays correlations between sales and top features. Values close to 1 or -1 indicate strong positive or negative relationships. Use the threshold to filter weak correlations.")
         try:
             top_features = importance_df["feature"].head(5).tolist()
             corr_features = ["units_sold"] + top_features
@@ -178,6 +182,7 @@ if df is not None:
         except Exception as e: st.error(f"Correlation error: {str(e)}")
 
         st.subheader("📈 Actual vs Predicted")
+        st.write("**Description**: Compares actual sales (blue) with predicted sales (orange dashed). Use to assess model accuracy; close alignment indicates good predictions, while deviations suggest areas for improvement.")
         try:
             if df_filtered["units_sold"].isna().any() or df_filtered["predicted"].isna().any():
                 df_filtered["units_sold"] = df_filtered["units_sold"].fillna(df_filtered["units_sold"].mean())
@@ -192,6 +197,7 @@ if df is not None:
         except Exception as e: st.error(f"Forecast error: {str(e)}")
 
         st.subheader("🚨 Anomalies")
+        st.write("**Description**: Highlights unusual sales spikes (red dots) against actual sales (blue). Filter by cause to identify events like promotions or disruptions; interpret as outliers needing investigation.")
         anomalies = df_filtered[df_filtered["anomaly"]]
         causes = sorted(anomalies["root_cause_hint"].unique())
         selected_causes = st.multiselect("Filter Causes", causes, default=causes)
@@ -209,6 +215,7 @@ if df is not None:
             except Exception as e: st.error(f"Anomaly plot error: {str(e)}")
 
         st.subheader("📦 Stock vs Demand")
+        st.write("**Description**: Shows actual sales (blue), predicted sales (orange dashed), and stock levels (green). Use to identify stock shortages (when stock falls below predicted demand) and plan inventory.")
         try:
             fig, ax = plt.subplots(figsize=(14, 4))
             sns.lineplot(data=df_filtered, x="date", y="units_sold", label="Actual", ax=ax, color="#1f77b4")
@@ -221,9 +228,11 @@ if df is not None:
         except Exception as e: st.error(f"Stock plot error: {str(e)}")
 
         st.subheader("📦 Reorder Recommendations")
+        st.write("**Description**: Lists predicted sales, current stock, and suggested reorder quantities. A positive reorder value indicates the amount needed to meet demand; interpret as an inventory action plan.")
         st.dataframe(df_filtered[["date", "predicted", "stock_level", "reorder_quantity"]])
 
         st.subheader("🧮 Model Equation")
+        st.write("**Description**: Provides a simplified linear approximation of the prediction model based on top features. Use to understand which factors most affect sales; 'others' represent minor contributors.")
         try:
             top_features = importance_df.head(5)[["feature", "importance"]]
             equation = "Predicted ≈ " + " + ".join([f"{imp:.3f}*{feat}" for feat, imp in zip(top_features["feature"], top_features["importance"])]) + " + others"
@@ -233,6 +242,7 @@ if df is not None:
         except Exception as e: st.error(f"Equation error: {str(e)}")
 
         st.subheader("🔮 Future Predictions")
+        st.write("**Description**: Upload future data to predict sales. Results show predicted units with uncertainty (±MAE). Interpret higher predictions as potential demand increases, adjusted by region.")
         sample_data = pd.DataFrame({
             "date": ["2025-07-18", "2025-07-19"], "is_weekend": [0, 1], "temperature": [25.0, 28.0],
             "football_match": [0, 1], "holiday": [0, 0], "season": ["Summer", "Summer"],
@@ -264,9 +274,9 @@ if df is not None:
                 st.error(f"Future data error: {str(e)}")
 
         st.subheader("🔍 What-If Analysis")
-        st.write("Predict for a custom scenario.")
+        st.write("**Description**: Simulate sales for a custom scenario. Adjust inputs (e.g., weather, promotions) and click 'Predict Sales' to see the result. Interpret the prediction as an estimate with ±MAE uncertainty based on historical accuracy.")
         try:
-            with st.form(key="what_if_form_v6"):  # Updated key for uniqueness
+            with st.form(key="what_if_form_v6"):
                 col1, col2 = st.columns(2)
                 with col1:
                     date = st.date_input("Date", value=pd.to_datetime("2025-07-17"), key="wi_date")
@@ -294,7 +304,6 @@ if df is not None:
                 if submitted:
                     try:
                         st.write("Debug: Form submitted.")
-                        # Pre-populate lagged values with historical mean
                         lag1_mean = df["units_sold_lag1"].mean() if "units_sold_lag1" in df.columns else df["units_sold"].mean()
                         avg7d_mean = df["units_sold_7d_avg"].mean() if "units_sold_7d_avg" in df.columns else df["units_sold"].mean()
                         scenario = pd.DataFrame({
@@ -321,6 +330,7 @@ if df is not None:
             st.error(f"Form initialization error: {str(e)}")
 
         st.subheader("📥 Download Historical Data")
+        st.write("**Description**: Download the filtered historical data with predictions. Use to export results for further analysis; includes all columns shown in the dashboard.")
         st.download_button("Download Forecast", data=df_filtered.to_csv(index=False).encode(), file_name=f"forecast_{region_filter.lower()}.csv", mime="text/csv")
 
     except Exception as e:
