@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from xgboost import XGBRegressor
 from sklearn.metrics import mean_absolute_error
+import io
 
 # Note: To prevent inotify errors on Streamlit Cloud, ensure a config.toml file exists in the project root with:
 # [server]
@@ -18,20 +19,32 @@ st.title("🍺 Beer Demand Forecast & Anomaly Detection")
 
 # Cache data loading and feature engineering
 @st.cache_data
-def load_and_process_data(file):
+def load_and_process_data(file, is_future=False):
     try:
         df = pd.read_csv(file, parse_dates=["date"])
         
-        required_cols = {"date", "units_sold", "is_weekend", "temperature", "football_match", "holiday", "season", 
+        required_cols = {"date", "is_weekend", "temperature", "football_match", "holiday", "season", 
                         "precipitation", "lead_time", "beer_type", "promotion", "stock_level", 
                         "customer_sentiment", "competitor_promotion", "region", "supply_chain_disruption", "units_sold_30d_avg"}
-        if not required_cols.issubset(df.columns):
-            raise ValueError(f"CSV must include columns: {required_cols}")
+        if not is_future:
+            required_cols.add("units_sold")
+        missing_cols = required_cols - set(df.columns)
+        if missing_cols:
+            # For future data, allow defaults for non-critical columns
+            if is_future:
+                for col in missing_cols:
+                    if col in ["customer_sentiment", "competitor_promotion", "promotion", "supply_chain_disruption"]:
+                        df[col] = 0  # Default for optional columns
+                    else:
+                        raise ValueError(f"Missing critical column(s) in future data: {missing_cols}")
+            else:
+                raise ValueError(f"CSV must include columns: {required_cols}")
         
         # Feature Engineering
         df["day_of_week"] = df["date"].dt.dayofweek
-        df["units_sold_lag1"] = df["units_sold"].shift(1).fillna(df["units_sold"].mean())
-        df["units_sold_7d_avg"] = df["units_sold"].rolling(window=7, min_periods=1).mean().fillna(df["units_sold"].mean())
+        if not is_future:
+            df["units_sold_lag1"] = df["units_sold"].shift(1).fillna(df["units_sold"].mean())
+            df["units_sold_7d_avg"] = df["units_sold"].rolling(window=7, min_periods=1).mean().fillna(df["units_sold"].mean())
         df["hot_day"] = (df["temperature"] > 25).astype(int)
         df = pd.get_dummies(df, columns=["beer_type", "season", "region"], prefix=["beer", "season", "region"])
         
@@ -48,7 +61,20 @@ def compute_correlation_matrix(df, features, threshold):
         corr_matrix = corr_matrix.where(~mask, 0)
     return corr_matrix
 
-# Upload file
+# Function to align future data features with training data
+def align_features(future_df, train_df, features):
+    # Ensure all training features are present
+    for col in features:
+        if col not in future_df.columns:
+            if col.startswith("beer_") or col.startswith("season_") or col.startswith("region_"):
+                future_df[col] = 0  # Set missing dummy variables to 0
+            elif col in ["units_sold_lag1", "units_sold_7d_avg"]:
+                future_df[col] = train_df["units_sold"].mean()  # Default to historical mean
+    # Remove extra columns not in training features
+    future_df = future_df[[col for col in future_df.columns if col in features or col == "date"]]
+    return future_df
+
+# Upload historical data
 uploaded_file = st.file_uploader("📤 Upload raw input file (raw_beer_sales_data.csv)", type=["csv"])
 
 if uploaded_file:
@@ -57,11 +83,11 @@ if uploaded_file:
         progress_bar = st.progress(0)
         status_text = st.empty()
         
-        # Load and process data
-        status_text.text("Loading and processing data...")
-        df = load_and_process_data(uploaded_file)
+        # Load and process historical data
+        status_text.text("Loading and processing historical data...")
+        df = load_and_process_data(uploaded_file, is_future=False)
         progress_bar.progress(20)
-        st.success("✅ Raw input loaded")
+        st.success("✅ Historical data loaded")
 
         # --- Regional Dashboard Filter ---
         st.subheader("🌍 Regional Dashboard")
@@ -115,6 +141,7 @@ if uploaded_file:
         model.fit(X, y)
         df["predicted"] = model.predict(X)
         df_filtered["predicted"] = df["predicted"][df_filtered.index]
+        historical_mae = mean_absolute_error(df_filtered["units_sold"], df_filtered["predicted"])
         progress_bar.progress(40)
 
         # --- Feature Importance (Computed Early for Correlation Matrix) ---
@@ -261,7 +288,7 @@ if uploaded_file:
             df_filtered["predicted"] = df_filtered["predicted"].fillna(df_filtered["predicted"].mean())
         st.write(f"Debug: units_sold - min: {df_filtered['units_sold'].min()}, max: {df_filtered['units_sold'].max()}, mean: {df_filtered['units_sold'].mean():.2f}")
         st.write(f"Debug: predicted - min: {df_filtered['predicted'].min()}, max: {df_filtered['predicted'].max()}, mean: {df_filtered['predicted'].mean():.2f}")
-        st.write(f"Debug: Mean Absolute Error (MAE) between units_sold and predicted: {mean_absolute_error(df_filtered['units_sold'], df_filtered['predicted']):.2f}")
+        st.write(f"Debug: Mean Absolute Error (MAE) between units_sold and predicted: {historical_mae:.2f}")
 
         status_text.text("Generating plots...")
         try:
@@ -344,18 +371,183 @@ if uploaded_file:
         except Exception as e:
             st.error(f"Error generating model equation: {str(e)}")
 
-        # --- Download Enriched Output ---
-        st.subheader("📥 Download Forecast Data")
-        st.write("Download the enriched dataset with predictions, anomalies, and reorder quantities for further analysis.")
+        # --- Future Data Predictions ---
+        st.subheader("🔮 Future Data Predictions")
+        st.write("Upload a CSV with future data (e.g., weather, football matches) to predict future beer sales. Lagged features (e.g., past sales averages) are computed using historical data and predictions. A sample template is available below.")
+        
+        # Provide sample CSV template
+        sample_data = pd.DataFrame({
+            "date": ["2025-08-01", "2025-08-02"],
+            "is_weekend": [1, 0],
+            "temperature": [28.5, 22.0],
+            "football_match": [1, 0],
+            "holiday": [0, 0],
+            "season": ["Summer", "Summer"],
+            "precipitation": [0.0, 5.0],
+            "lead_time": [3, 3],
+            "beer_type": ["Lager", "IPA"],
+            "promotion": [1, 0],
+            "stock_level": [100, 120],
+            "customer_sentiment": [0.5, 0.0],
+            "competitor_promotion": [0, 1],
+            "region": ["Urban", "Rural"],
+            "supply_chain_disruption": [0, 0],
+            "units_sold_30d_avg": [150.0, 150.0]
+        })
+        sample_csv = sample_data.to_csv(index=False).encode("utf-8")
         st.download_button(
-            label="Download Forecast + Anomaly CSV",
+            label="📥 Download Sample Future Data CSV",
+            data=sample_csv,
+            file_name="sample_future_data.csv",
+            mime="text/csv"
+        )
+
+        # Upload future data
+        future_file = st.file_uploader("📤 Upload future data CSV", type=["csv"], key="future_data")
+        if future_file:
+            try:
+                status_text.text("Processing future data...")
+                future_df = load_and_process_data(future_file, is_future=True)
+                
+                # Append future data to historical data for lagged features
+                combined_df = pd.concat([df[["date", "units_sold"]], future_df.assign(units_sold=np.nan)], ignore_index=True)
+                combined_df = combined_df.sort_values("date")
+                combined_df["units_sold_lag1"] = combined_df["units_sold"].shift(1).fillna(df["units_sold"].mean())
+                combined_df["units_sold_7d_avg"] = combined_df["units_sold"].rolling(window=7, min_periods=1).mean().fillna(df["units_sold"].mean())
+                
+                # Update future_df with computed lagged features
+                future_df = future_df.merge(
+                    combined_df[["date", "units_sold_lag1", "units_sold_7d_avg"]],
+                    on="date",
+                    how="left"
+                )
+                
+                # Align features with training data
+                future_df = align_features(future_df, df, features)
+                
+                # Predict future sales
+                X_future = future_df[features]
+                future_df["predicted"] = model.predict(X_future)
+                future_df["uncertainty_range"] = f"±{historical_mae:.2f} (based on historical MAE)"
+                
+                # Filter by region
+                future_region_filter = st.selectbox("Select Region for Future Predictions", ["All", "Urban", "Suburban", "Rural"], key="future_region")
+                if future_region_filter != "All":
+                    future_df_filtered = future_df[future_df[f"region_{future_region_filter}"] == 1]
+                else:
+                    future_df_filtered = future_df
+
+                # Display predictions
+                st.write("**Future Sales Predictions**")
+                st.write("Note: Lagged features (e.g., past sales averages) for future dates are computed using historical sales and predicted values, which may introduce some uncertainty.")
+                display_cols = ["date", "predicted", "uncertainty_range", "temperature", "football_match", "promotion", 
+                                "beer_type", "season", "region", "is_weekend", "holiday", "precipitation"]
+                display_cols = [col for col in display_cols if col in future_df_filtered.columns or col == "predicted" or col == "uncertainty_range"]
+                st.dataframe(future_df_filtered[display_cols])
+
+                # Plot future predictions
+                try:
+                    fig6, ax6 = plt.subplots(figsize=(14, 4))
+                    sns.lineplot(data=future_df_filtered, x="date", y="predicted", label="Predicted Sales", ax=ax6, color="#ff7f0e", linewidth=3, alpha=0.8)
+                    ax6.set_ylabel("Units", color="#ffffff", fontsize=12)
+                    ax6.set_title(f"Future Sales Predictions ({future_region_filter})", color="#ffffff", fontsize=16)
+                    ax6.tick_params(axis="x", colors="#ffffff", rotation=45)
+                    ax6.tick_params(axis="y", colors="#ffffff")
+                    ax6.legend(labelcolor="#ffffff")
+                    plt.tight_layout()
+                    st.pyplot(fig6)
+                except Exception as e:
+                    st.error(f"Error generating future predictions plot: {str(e)}")
+
+                # Download future predictions
+                st.download_button(
+                    label="📥 Download Future Predictions CSV",
+                    data=future_df_filtered.to_csv(index=False).encode("utf-8"),
+                    file_name=f"future_beer_predictions_{future_region_filter.lower()}.csv",
+                    mime="text/csv"
+                )
+
+            except Exception as e:
+                st.error(f"❌ Error processing future data: {str(e)}")
+
+        # --- What-If Scenario Analysis ---
+        st.subheader("🔍 What-If Scenario Analysis")
+        st.write("Enter data for a single future date to predict sales under specific conditions (e.g., a football match with a promotion).")
+        with st.form("what_if_form"):
+            scenario_date = st.date_input("Date")
+            scenario_is_weekend = st.checkbox("Is Weekend")
+            scenario_temperature = st.slider("Temperature (°C)", 0.0, 40.0, 20.0, 0.5)
+            scenario_football_match = st.checkbox("Football Match")
+            scenario_holiday = st.checkbox("Holiday")
+            scenario_season = st.selectbox("Season", ["Spring", "Summer", "Fall", "Winter"])
+            scenario_precipitation = st.slider("Precipitation (mm)", 0.0, 50.0, 0.0, 0.5)
+            scenario_lead_time = st.number_input("Lead Time (days)", 0, 10, 3)
+            scenario_beer_type = st.selectbox("Beer Type", df["beer_type"].unique())
+            scenario_promotion = st.checkbox("Promotion Active")
+            scenario_stock_level = st.number_input("Stock Level", 0, 1000, 100)
+            scenario_customer_sentiment = st.slider("Customer Sentiment", -1.0, 1.0, 0.0, 0.1)
+            scenario_competitor_promotion = st.checkbox("Competitor Promotion")
+            scenario_region = st.selectbox("Region", ["Urban", "Suburban", "Rural"])
+            scenario_supply_chain_disruption = st.checkbox("Supply Chain Disruption")
+            scenario_units_sold_30d_avg = st.number_input("30-Day Avg Sales", 0.0, 1000.0, df["units_sold"].mean())
+            
+            submitted = st.form_submit_button("Predict Sales")
+            if submitted:
+                try:
+                    # Create DataFrame for scenario
+                    scenario_df = pd.DataFrame({
+                        "date": [pd.to_datetime(scenario_date)],
+                        "is_weekend": [1 if scenario_is_weekend else 0],
+                        "temperature": [scenario_temperature],
+                        "football_match": [1 if scenario_football_match else 0],
+                        "holiday": [1 if scenario_holiday else 0],
+                        "season": [scenario_season],
+                        "precipitation": [scenario_precipitation],
+                        "lead_time": [scenario_lead_time],
+                        "beer_type": [scenario_beer_type],
+                        "promotion": [1 if scenario_promotion else 0],
+                        "stock_level": [scenario_stock_level],
+                        "customer_sentiment": [scenario_customer_sentiment],
+                        "competitor_promotion": [1 if scenario_competitor_promotion else 0],
+                        "region": [scenario_region],
+                        "supply_chain_disruption": [1 if scenario_supply_chain_disruption else 0],
+                        "units_sold_30d_avg": [scenario_units_sold_30d_avg]
+                    })
+                    
+                    # Process scenario data
+                    scenario_df = load_and_process_data(io.StringIO(scenario_df.to_csv(index=False)), is_future=True)
+                    scenario_df = align_features(scenario_df, df, features)
+                    
+                    # Append to historical data for lagged features
+                    combined_df = pd.concat([df[["date", "units_sold"]], scenario_df.assign(units_sold=np.nan)], ignore_index=True)
+                    combined_df = combined_df.sort_values("date")
+                    combined_df["units_sold_lag1"] = combined_df["units_sold"].shift(1).fillna(df["units_sold"].mean())
+                    combined_df["units_sold_7d_avg"] = combined_df["units_sold"].rolling(window=7, min_periods=1).mean().fillna(df["units_sold"].mean())
+                    scenario_df = scenario_df.merge(
+                        combined_df[["date", "units_sold_lag1", "units_sold_7d_avg"]],
+                        on="date",
+                        how="left"
+                    )
+                    
+                    # Predict
+                    X_scenario = scenario_df[features]
+                    scenario_pred = model.predict(X_scenario)[0]
+                    st.write(f"**Predicted Sales for {scenario_date}:** {scenario_pred:.2f} units ±{historical_mae:.2f} (based on historical MAE)")
+                except Exception as e:
+                    st.error(f"❌ Error processing scenario: {str(e)}")
+
+        # --- Download Enriched Output ---
+        st.subheader("📥 Download Historical Forecast Data")
+        st.write("Download the enriched historical dataset with predictions, anomalies, and reorder quantities for further analysis.")
+        st.download_button(
+            label="Download Historical Forecast + Anomaly CSV",
             data=df_filtered.to_csv(index=False).encode("utf-8"),
             file_name=f"beer_forecast_with_anomalies_{region_filter.lower()}.csv",
             mime="text/csv",
         )
 
-        with st.expander("🧾 Show Enriched Data"):
-            st.write("This table shows the full dataset with predictions, anomalies, and reorder quantities for the selected region.")
+        with st.expander("🧾 Show Enriched Historical Data"):
+            st.write("This table shows the full historical dataset with predictions, anomalies, and reorder quantities for the selected region.")
             st.dataframe(df_filtered)
 
         progress_bar.progress(100)
