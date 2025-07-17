@@ -265,7 +265,7 @@ if df is not None:
 
         st.subheader("🔍 What-If Analysis")
         st.write("Predict for a custom scenario.")
-        with st.form(key="what_if_form_v3"):
+        with st.form(key="what_if_form_v4"):  # Updated key for uniqueness
             col1, col2 = st.columns(2)
             with col1:
                 date = st.date_input("Date", value=pd.to_datetime("2025-07-17"), key="wi_date")
@@ -287,10 +287,11 @@ if df is not None:
                 avg_sales = st.number_input("30d Avg", 0.0, 1000.0, df["units_sold"].mean(), key="wi_avg")
             
             submitted = st.form_submit_button("Predict Sales")
-            st.write("Debug: Form active.")
+            st.write("Debug: Inside form.")  # Debug to confirm form context
             
             if submitted:
                 try:
+                    st.write("Debug: Form submitted.")  # Debug to confirm submission
                     scenario = pd.DataFrame({
                         "date": [pd.to_datetime(date)], "is_weekend": [1 if is_weekend else 0],
                         "temperature": [temp], "football_match": [1 if football else 0],
