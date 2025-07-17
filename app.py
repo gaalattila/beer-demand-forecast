@@ -74,6 +74,34 @@ if uploaded_file:
 
         # --- Model Training and Prediction ---
         status_text.text("Training model...")
+        st.subheader("⚙️ Customize Model Hyperparameters")
+        st.write("Adjust the settings below to tune the AI model's predictions for beer sales. These control how the model learns patterns from the data.")
+        
+        n_estimators = st.slider(
+            "Number of Trees (n_estimators)",
+            min_value=10,
+            max_value=200,
+            value=50,
+            step=10,
+            help="Controls how many decision trees the model uses. More trees can improve accuracy but may slow down the app and risk overfitting (memorizing data instead of generalizing)."
+        )
+        max_depth = st.slider(
+            "Maximum Tree Depth (max_depth)",
+            min_value=1,
+            max_value=10,
+            value=2,
+            step=1,
+            help="Sets how complex each tree can be. Deeper trees capture more detailed patterns but may overfit if set too high."
+        )
+        reg_alpha = st.slider(
+            "L1 Regularization (reg_alpha)",
+            min_value=0.0,
+            max_value=1.0,
+            value=0.1,
+            step=0.05,
+            help="Reduces model complexity to prevent overfitting. Higher values make the model simpler, which can improve predictions on new data."
+        )
+        
         features = ["is_weekend", "temperature", "football_match", "holiday", 
                     "precipitation", "lead_time", "promotion", "day_of_week", 
                     "units_sold_lag1", "units_sold_7d_avg", "customer_sentiment", 
@@ -83,7 +111,7 @@ if uploaded_file:
         X = df[features]
         y = df["units_sold"]
 
-        model = XGBRegressor(n_estimators=50, max_depth=2, reg_alpha=0.1)
+        model = XGBRegressor(n_estimators=n_estimators, max_depth=max_depth, reg_alpha=reg_alpha)
         model.fit(X, y)
         df["predicted"] = model.predict(X)
         df_filtered["predicted"] = df["predicted"][df_filtered.index]
@@ -121,6 +149,7 @@ if uploaded_file:
             "category": [categories.get(f, "Other") for f in features]
         }).sort_values(by="importance", ascending=False)
 
+        Swanson:
         # --- Anomaly Detection ---
         status_text.text("Detecting anomalies...")
         df["error"] = abs(df["units_sold"] - df["predicted"])
@@ -211,7 +240,7 @@ if uploaded_file:
         if df_filtered["units_sold"].isna().any() or df_filtered["predicted"].isna().any():
             st.warning("NaN values detected in units_sold or predicted. Filling with mean for plotting.")
             df_filtered["units_sold"] = df_filtered["units_sold"].fillna(df_filtered["units_sold"].mean())
-            df_filtered["predicted"] = df_filtered["predicted"].fillna(df_filtered["predicted"].mean())
+            df_filtered["predicted"] = df filtered["predicted"].fillna(df_filtered["predicted"].mean())
         st.write(f"Debug: units_sold - min: {df_filtered['units_sold'].min()}, max: {df_filtered['units_sold'].max()}, mean: {df_filtered['units_sold'].mean():.2f}")
         st.write(f"Debug: predicted - min: {df_filtered['predicted'].min()}, max: {df_filtered['predicted'].max()}, mean: {df_filtered['predicted'].mean():.2f}")
         st.write(f"Debug: Mean Absolute Error (MAE) between units_sold and predicted: {mean_absolute_error(df_filtered['units_sold'], df_filtered['predicted']):.2f}")
@@ -303,7 +332,7 @@ if uploaded_file:
         st.subheader("🧮 Prediction Model Equation")
         st.write("This equation summarizes how key factors (e.g., past sales, hot days) contribute to the AI’s sales predictions, guiding inventory planning.")
         try:
-            st.write("The prediction model is an XGBoost ensemble of 50 decision trees, each with a maximum depth of 2, and L1 regularization (reg_alpha=0.1).")
+            st.write(f"The prediction model is an XGBoost ensemble of {n_estimators} decision trees, each with a maximum depth of {max_depth}, and L1 regularization (reg_alpha={reg_alpha}).")
             st.write("The predicted units_sold is a weighted sum of contributions from the following features, based on their importance:")
             
             top_features = importance_df.head(5)[["feature", "importance"]]
