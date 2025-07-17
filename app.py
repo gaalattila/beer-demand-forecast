@@ -121,6 +121,11 @@ st.markdown(
         border-bottom: 1px solid #e0e0e0;
         padding-bottom: 10px;
     }
+    .what-if-block p {
+        color: #6e6e6e;
+        font-size: 0.9em;
+        margin: 0 0 15px 0;
+    }
     .what-if-block .stForm {
         padding: 0;
         display: flex;
@@ -398,9 +403,9 @@ if df is not None:
             except Exception as e:
                 st.error(f"Future data error: {str(e)}")
 
-        st.markdown('<div class="card"><h3>🔍 What-If Analysis</h3><p>Simulate sales for a custom scenario. Adjust inputs (e.g., weather, promotions) and click "Predict Sales" to see the result. Interpret the prediction as an estimate with ±MAE uncertainty based on historical accuracy.</p></div>', unsafe_allow_html=True)
         st.markdown('<div class="what-if-block">', unsafe_allow_html=True)
-        st.markdown('<h3>Scenario Parameters</h3>', unsafe_allow_html=True)
+        st.markdown('<h3>🔍 What-If Analysis</h3>', unsafe_allow_html=True)
+        st.markdown('<p>Simulate sales for a custom scenario. Adjust inputs (e.g., weather, promotions) and click "Predict Sales" to see the result. Interpret the prediction as an estimate with ±MAE uncertainty based on historical accuracy.</p>', unsafe_allow_html=True)
         try:
             with st.form(key="what_if_form_v6"):
                 col1, col2 = st.columns(2)
