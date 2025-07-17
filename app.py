@@ -189,6 +189,25 @@ if uploaded_file:
         df_filtered["reorder_quantity"] = df["reorder_quantity"][df_filtered.index]
         progress_bar.progress(80)
 
+        # --- Feature Importance ---
+        st.subheader("📊 Feature Importance (retrained model)")
+        st.write("This chart shows which factors (e.g., hot days, football matches) most influence sales predictions, helping prioritize inventory strategies.")
+        try:
+            fig3, ax3 = plt.subplots(figsize=(10, 5))
+            sns.barplot(data=importance_df, x="importance", y="feature", hue="category", ax=ax3)
+            ax3.set_title("Feature Importance", color="#ffffff", fontsize=16)
+            ax3.set_xlabel("Importance", color="#ffffff", fontsize=12)
+            ax3.set_ylabel("Feature", color="#ffffff", fontsize=12)
+            ax3.tick_params(axis="x", colors="#ffffff")
+            ax3.tick_params(axis="y", colors="#ffffff")
+            ax3.legend(labelcolor="#ffffff")
+            plt.tight_layout()
+            st.pyplot(fig3)
+            with st.expander("📄 Feature Importance Table"):
+                st.dataframe(importance_df)
+        except Exception as e:
+            st.error(f"Error generating feature importance plot: {str(e)}")
+
         # --- Correlation Matrix ---
         st.subheader("🔗 Correlation Matrix")
         st.write("This heatmap shows correlations between the top 5 most important features (from the model) and sales. Values range from -1 (negative) to 1 (positive). Strong correlations (>0.5) indicate key demand drivers and are listed in the table below. Use the slider to filter weak correlations and the checkbox to focus on sales-related features.")
@@ -307,25 +326,6 @@ if uploaded_file:
         st.subheader("📦 Reorder Recommendations")
         st.write("This table suggests reorder quantities to maintain optimal inventory, accounting for predicted demand, lead time, and buffers for Urban regions (20% extra) and supply chain disruptions (50% extra).")
         st.dataframe(df_filtered[["date", "predicted", "stock_level", "reorder_quantity"]])
-
-        # --- Feature Importance ---
-        st.subheader("📊 Feature Importance (retrained model)")
-        st.write("This chart shows which factors (e.g., hot days, football matches) most influence sales predictions, helping prioritize inventory strategies.")
-        try:
-            fig3, ax3 = plt.subplots(figsize=(10, 5))
-            sns.barplot(data=importance_df, x="importance", y="feature", hue="category", ax=ax3)
-            ax3.set_title("Feature Importance", color="#ffffff", fontsize=16)
-            ax3.set_xlabel("Importance", color="#ffffff", fontsize=12)
-            ax3.set_ylabel("Feature", color="#ffffff", fontsize=12)
-            ax3.tick_params(axis="x", colors="#ffffff")
-            ax3.tick_params(axis="y", colors="#ffffff")
-            ax3.legend(labelcolor="#ffffff")
-            plt.tight_layout()
-            st.pyplot(fig3)
-            with st.expander("📄 Feature Importance Table"):
-                st.dataframe(importance_df)
-        except Exception as e:
-            st.error(f"Error generating feature importance plot: {str(e)}")
 
         # --- Prediction Model Equation ---
         st.subheader("🧮 Prediction Model Equation")
