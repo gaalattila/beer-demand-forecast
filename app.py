@@ -265,56 +265,60 @@ if df is not None:
 
         st.subheader("🔍 What-If Analysis")
         st.write("Predict for a custom scenario.")
-        with st.form(key="what_if_form_v4"):  # Updated key for uniqueness
-            col1, col2 = st.columns(2)
-            with col1:
-                date = st.date_input("Date", value=pd.to_datetime("2025-07-17"), key="wi_date")
-                is_weekend = st.checkbox("Weekend", key="wi_weekend")
-                temp = st.slider("Temp (°C)", 0.0, 40.0, 20.0, key="wi_temp")
-                football = st.checkbox("Football", key="wi_football")
-                holiday = st.checkbox("Holiday", key="wi_holiday")
-                season = st.selectbox("Season", ["Spring", "Summer", "Fall", "Winter"], key="wi_season")
-                precip = st.slider("Precip (mm)", 0.0, 50.0, 0.0, key="wi_precip")
-            with col2:
-                lead = st.number_input("Lead Time", 0, 10, 3, key="wi_lead")
-                beer = st.selectbox("Beer Type", df["beer_type"].unique(), key="wi_beer")
-                promo = st.checkbox("Promotion", key="wi_promo")
-                stock = st.number_input("Stock", 0, 1000, 100, key="wi_stock")
-                sentiment = st.slider("Sentiment", -1.0, 1.0, 0.0, key="wi_sent")
-                comp_promo = st.checkbox("Comp Promo", key="wi_comp")
-                region = st.selectbox("Region", ["Urban", "Suburban", "Rural"], key="wi_region")
-                disruption = st.checkbox("Disruption", key="wi_disrupt")
-                avg_sales = st.number_input("30d Avg", 0.0, 1000.0, df["units_sold"].mean(), key="wi_avg")
-            
-            submitted = st.form_submit_button("Predict Sales")
-            st.write("Debug: Inside form.")  # Debug to confirm form context
-            
-            if submitted:
-                try:
-                    st.write("Debug: Form submitted.")  # Debug to confirm submission
-                    scenario = pd.DataFrame({
-                        "date": [pd.to_datetime(date)], "is_weekend": [1 if is_weekend else 0],
-                        "temperature": [temp], "football_match": [1 if football else 0],
-                        "holiday": [1 if holiday else 0], "season": [season],
-                        "precipitation": [precip], "lead_time": [lead], "beer_type": [beer],
-                        "promotion": [1 if promo else 0], "stock_level": [stock],
-                        "customer_sentiment": [sentiment], "competitor_promotion": [1 if comp_promo else 0],
-                        "region": [region], "supply_chain_disruption": [1 if disruption else 0],
-                        "units_sold_30d_avg": [avg_sales]
-                    })
-                    scenario = load_and_process_data(io.StringIO(scenario.to_csv(index=False)), is_future=True)
-                    if scenario is not None:
-                        scenario = align_features(scenario, df, features)
-                        combined = pd.concat([df[["date", "units_sold"]], scenario.assign(units_sold=np.nan)])
-                        combined["units_sold_lag1"] = combined["units_sold"].shift(1).fillna(df["units_sold"].mean())
-                        combined["units_sold_7d_avg"] = combined["units_sold"].rolling(7, min_periods=1).mean().fillna(df["units_sold"].mean())
-                        scenario = scenario.merge(combined[["date", "units_sold_lag1", "units_sold_7d_avg"]], on="date")
-                        pred = model.predict(scenario[features])[0]
-                        st.success(f"Predicted: {pred:.2f} ±{mae:.2f}")
-                except Exception as e:
-                    st.error(f"Scenario error: {str(e)}")
-            else:
-                st.info("Click 'Predict Sales' to see results.")
+        try:
+            with st.form(key="what_if_form_v5"):  # Updated key for uniqueness
+                col1, col2 = st.columns(2)
+                with col1:
+                    date = st.date_input("Date", value=pd.to_datetime("2025-07-17"), key="wi_date")
+                    is_weekend = st.checkbox("Weekend", key="wi_weekend")
+                    temp = st.slider("Temp (°C)", 0.0, 40.0, 20.0, key="wi_temp")
+                    football = st.checkbox("Football", key="wi_football")
+                    holiday = st.checkbox("Holiday", key="wi_holiday")
+                    season = st.selectbox("Season", ["Spring", "Summer", "Fall", "Winter"], key="wi_season")
+                    precip = st.slider("Precip (mm)", 0.0, 50.0, 0.0, key="wi_precip")
+                with col2:
+                    lead = st.number_input("Lead Time", 0, 10, 3, key="wi_lead")
+                    beer = st.selectbox("Beer Type", df["beer_type"].unique() if "beer_type" in df.columns else ["Lager"], key="wi_beer")
+                    promo = st.checkbox("Promotion", key="wi_promo")
+                    stock = st.number_input("Stock", 0, 1000, 100, key="wi_stock")
+                    sentiment = st.slider("Sentiment", -1.0, 1.0, 0.0, key="wi_sent")
+                    comp_promo = st.checkbox("Comp Promo", key="wi_comp")
+                    region = st.selectbox("Region", ["Urban", "Suburban", "Rural"], key="wi_region")
+                    disruption = st.checkbox("Disruption", key="wi_disrupt")
+                    avg_sales = st.number_input("30d Avg", 0.0, 1000.0, df["units_sold"].mean(), key="wi_avg")
+                
+                st.write("Debug: Form elements loaded.")  # Debug after widgets
+                submitted = st.form_submit_button("Predict Sales")
+                st.write("Debug: Submit button rendered.")  # Debug after button
+                
+                if submitted:
+                    try:
+                        st.write("Debug: Form submitted.")
+                        scenario = pd.DataFrame({
+                            "date": [pd.to_datetime(date)], "is_weekend": [1 if is_weekend else 0],
+                            "temperature": [temp], "football_match": [1 if football else 0],
+                            "holiday": [1 if holiday else 0], "season": [season],
+                            "precipitation": [precip], "lead_time": [lead], "beer_type": [beer],
+                            "promotion": [1 if promo else 0], "stock_level": [stock],
+                            "customer_sentiment": [sentiment], "competitor_promotion": [1 if comp_promo else 0],
+                            "region": [region], "supply_chain_disruption": [1 if disruption else 0],
+                            "units_sold_30d_avg": [avg_sales]
+                        })
+                        scenario = load_and_process_data(io.StringIO(scenario.to_csv(index=False)), is_future=True)
+                        if scenario is not None:
+                            scenario = align_features(scenario, df, features)
+                            combined = pd.concat([df[["date", "units_sold"]], scenario.assign(units_sold=np.nan)])
+                            combined["units_sold_lag1"] = combined["units_sold"].shift(1).fillna(df["units_sold"].mean())
+                            combined["units_sold_7d_avg"] = combined["units_sold"].rolling(7, min_periods=1).mean().fillna(df["units_sold"].mean())
+                            scenario = scenario.merge(combined[["date", "units_sold_lag1", "units_sold_7d_avg"]], on="date")
+                            pred = model.predict(scenario[features])[0]
+                            st.success(f"Predicted: {pred:.2f} ±{mae:.2f}")
+                    except Exception as e:
+                        st.error(f"Scenario error: {str(e)}")
+                else:
+                    st.info("Click 'Predict Sales' to see results.")
+        except Exception as e:
+            st.error(f"Form initialization error: {str(e)}")
 
         st.subheader("📥 Download Historical Data")
         st.download_button("Download Forecast", data=df_filtered.to_csv(index=False).encode(), file_name=f"forecast_{region_filter.lower()}.csv", mime="text/csv")
