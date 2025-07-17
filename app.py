@@ -318,5 +318,7 @@ if df is not None:
         st.subheader("📥 Download Historical Data")
         st.download_button("Download Forecast", data=df_filtered.to_csv(index=False).encode(), file_name=f"forecast_{region_filter.lower()}.csv", mime="text/csv")
 
-    else:
-        st.info("Upload or place raw_beer_sales_data.csv to start.")
+    except Exception as e:
+        st.error(f"App error: {str(e)}")
+else:
+    st.info("Upload or place raw_beer_sales_data.csv to start.")
