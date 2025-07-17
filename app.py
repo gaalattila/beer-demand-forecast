@@ -24,6 +24,9 @@ st.markdown(
         background-color: #f7f7f7;
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     }
+    .stApp > h1 {
+        color: #6e6e6e !important;
+    }
     .card {
         background-color: white;
         border-radius: 12px;
@@ -65,6 +68,10 @@ st.markdown(
         color: #6e6e6e !important;
     }
     .matplotlib-title, .matplotlib-label, .matplotlib-legend {
+        color: #6e6e6e !important;
+    }
+    /* Ensure widget labels are readable */
+    .stSelectbox label, .stSlider label, .stCheckbox label, .stNumberInput label {
         color: #6e6e6e !important;
     }
     </style>
