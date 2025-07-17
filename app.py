@@ -266,7 +266,7 @@ if df is not None:
         st.subheader("🔍 What-If Analysis")
         st.write("Predict for a custom scenario.")
         try:
-            with st.form(key="what_if_form_v5"):  # Updated key for uniqueness
+            with st.form(key="what_if_form_v6"):  # Updated key for uniqueness
                 col1, col2 = st.columns(2)
                 with col1:
                     date = st.date_input("Date", value=pd.to_datetime("2025-07-17"), key="wi_date")
@@ -287,13 +287,16 @@ if df is not None:
                     disruption = st.checkbox("Disruption", key="wi_disrupt")
                     avg_sales = st.number_input("30d Avg", 0.0, 1000.0, df["units_sold"].mean(), key="wi_avg")
                 
-                st.write("Debug: Form elements loaded.")  # Debug after widgets
+                st.write("Debug: Form elements loaded.")
                 submitted = st.form_submit_button("Predict Sales")
-                st.write("Debug: Submit button rendered.")  # Debug after button
+                st.write("Debug: Submit button rendered.")
                 
                 if submitted:
                     try:
                         st.write("Debug: Form submitted.")
+                        # Pre-populate lagged values with historical mean
+                        lag1_mean = df["units_sold_lag1"].mean() if "units_sold_lag1" in df.columns else df["units_sold"].mean()
+                        avg7d_mean = df["units_sold_7d_avg"].mean() if "units_sold_7d_avg" in df.columns else df["units_sold"].mean()
                         scenario = pd.DataFrame({
                             "date": [pd.to_datetime(date)], "is_weekend": [1 if is_weekend else 0],
                             "temperature": [temp], "football_match": [1 if football else 0],
@@ -302,15 +305,12 @@ if df is not None:
                             "promotion": [1 if promo else 0], "stock_level": [stock],
                             "customer_sentiment": [sentiment], "competitor_promotion": [1 if comp_promo else 0],
                             "region": [region], "supply_chain_disruption": [1 if disruption else 0],
-                            "units_sold_30d_avg": [avg_sales]
+                            "units_sold_30d_avg": [avg_sales], "units_sold_lag1": [lag1_mean],
+                            "units_sold_7d_avg": [avg7d_mean]
                         })
                         scenario = load_and_process_data(io.StringIO(scenario.to_csv(index=False)), is_future=True)
                         if scenario is not None:
                             scenario = align_features(scenario, df, features)
-                            combined = pd.concat([df[["date", "units_sold"]], scenario.assign(units_sold=np.nan)])
-                            combined["units_sold_lag1"] = combined["units_sold"].shift(1).fillna(df["units_sold"].mean())
-                            combined["units_sold_7d_avg"] = combined["units_sold"].rolling(7, min_periods=1).mean().fillna(df["units_sold"].mean())
-                            scenario = scenario.merge(combined[["date", "units_sold_lag1", "units_sold_7d_avg"]], on="date")
                             pred = model.predict(scenario[features])[0]
                             st.success(f"Predicted: {pred:.2f} ±{mae:.2f}")
                     except Exception as e:
