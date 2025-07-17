@@ -473,25 +473,31 @@ if uploaded_file:
         # --- What-If Scenario Analysis ---
         st.subheader("🔍 What-If Scenario Analysis")
         st.write("Enter data for a single future date to predict sales under specific conditions (e.g., a football match with a promotion).")
-        with st.form("what_if_form"):
-            scenario_date = st.date_input("Date")
-            scenario_is_weekend = st.checkbox("Is Weekend")
-            scenario_temperature = st.slider("Temperature (°C)", 0.0, 40.0, 20.0, 0.5)
-            scenario_football_match = st.checkbox("Football Match")
-            scenario_holiday = st.checkbox("Holiday")
-            scenario_season = st.selectbox("Season", ["Spring", "Summer", "Fall", "Winter"])
-            scenario_precipitation = st.slider("Precipitation (mm)", 0.0, 50.0, 0.0, 0.5)
-            scenario_lead_time = st.number_input("Lead Time (days)", 0, 10, 3)
-            scenario_beer_type = st.selectbox("Beer Type", df["beer_type"].unique())
-            scenario_promotion = st.checkbox("Promotion Active")
-            scenario_stock_level = st.number_input("Stock Level", 0, 1000, 100)
-            scenario_customer_sentiment = st.slider("Customer Sentiment", -1.0, 1.0, 0.0, 0.1)
-            scenario_competitor_promotion = st.checkbox("Competitor Promotion")
-            scenario_region = st.selectbox("Region", ["Urban", "Suburban", "Rural"])
-            scenario_supply_chain_disruption = st.checkbox("Supply Chain Disruption")
-            scenario_units_sold_30d_avg = st.number_input("30-Day Avg Sales", 0.0, 1000.0, df["units_sold"].mean())
+        
+        with st.form(key="what_if_form"):
+            col1, col2 = st.columns(2)
+            with col1:
+                scenario_date = st.date_input("Date")
+                scenario_is_weekend = st.checkbox("Is Weekend")
+                scenario_temperature = st.slider("Temperature (°C)", 0.0, 40.0, 20.0, 0.5)
+                scenario_football_match = st.checkbox("Football Match")
+                scenario_holiday = st.checkbox("Holiday")
+                scenario_season = st.selectbox("Season", ["Spring", "Summer", "Fall", "Winter"])
+                scenario_precipitation = st.slider("Precipitation (mm)", 0.0, 50.0, 0.0, 0.5)
+            with col2:
+                scenario_lead_time = st.number_input("Lead Time (days)", 0, 10, 3)
+                scenario_beer_type = st.selectbox("Beer Type", df["beer_type"].unique())
+                scenario_promotion = st.checkbox("Promotion Active")
+                scenario_stock_level = st.number_input("Stock Level", 0, 1000, 100)
+                scenario_customer_sentiment = st.slider("Customer Sentiment", -1.0, 1.0, 0.0, 0.1)
+                scenario_competitor_promotion = st.checkbox("Competitor Promotion")
+                scenario_region = st.selectbox("Region", ["Urban", "Suburban", "Rural"])
+                scenario_supply_chain_disruption = st.checkbox("Supply Chain Disruption")
+                scenario_units_sold_30d_avg = st.number_input("30-Day Avg Sales", 0.0, 1000.0, df["units_sold"].mean())
             
+            # Submit button
             submitted = st.form_submit_button("Predict Sales")
+            
             if submitted:
                 try:
                     # Create DataFrame for scenario
@@ -532,11 +538,13 @@ if uploaded_file:
                     # Predict
                     X_scenario = scenario_df[features]
                     scenario_pred = model.predict(X_scenario)[0]
-                    st.write(f"**Predicted Sales for {scenario_date}:** {scenario_pred:.2f} units ±{historical_mae:.2f} (based on historical MAE)")
+                    st.success(f"**Predicted Sales for {scenario_date}:** {scenario_pred:.2f} units ±{historical_mae:.2f} (based on historical MAE)")
                 except Exception as e:
                     st.error(f"❌ Error processing scenario: {str(e)}")
+            else:
+                st.info("Fill in the form and click 'Predict Sales' to see the prediction.")
 
-        # --- Download Enriched Output ---
+        # --- Download Historical Forecast Data ---
         st.subheader("📥 Download Historical Forecast Data")
         st.write("Download the enriched historical dataset with predictions, anomalies, and reorder quantities for further analysis.")
         st.download_button(
