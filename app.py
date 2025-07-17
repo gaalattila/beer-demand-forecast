@@ -149,7 +149,6 @@ if uploaded_file:
             "category": [categories.get(f, "Other") for f in features]
         }).sort_values(by="importance", ascending=False)
 
-        Swanson:
         # --- Anomaly Detection ---
         status_text.text("Detecting anomalies...")
         df["error"] = abs(df["units_sold"] - df["predicted"])
@@ -240,7 +239,7 @@ if uploaded_file:
         if df_filtered["units_sold"].isna().any() or df_filtered["predicted"].isna().any():
             st.warning("NaN values detected in units_sold or predicted. Filling with mean for plotting.")
             df_filtered["units_sold"] = df_filtered["units_sold"].fillna(df_filtered["units_sold"].mean())
-            df_filtered["predicted"] = df filtered["predicted"].fillna(df_filtered["predicted"].mean())
+            df_filtered["predicted"] = df_filtered["predicted"].fillna(df_filtered["predicted"].mean())
         st.write(f"Debug: units_sold - min: {df_filtered['units_sold'].min()}, max: {df_filtered['units_sold'].max()}, mean: {df_filtered['units_sold'].mean():.2f}")
         st.write(f"Debug: predicted - min: {df_filtered['predicted'].min()}, max: {df_filtered['predicted'].max()}, mean: {df_filtered['predicted'].mean():.2f}")
         st.write(f"Debug: Mean Absolute Error (MAE) between units_sold and predicted: {mean_absolute_error(df_filtered['units_sold'], df_filtered['predicted']):.2f}")
