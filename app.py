@@ -136,6 +136,26 @@ st.markdown(
         padding-bottom: 5px;
         border-bottom: 1px solid #e0e0e0;
     }
+    /* Style for tabs */
+    .stTabs [data-baseweb="tab-list"] {
+        background-color: #f0f0f0;
+        border-radius: 10px;
+        padding: 2px;
+    }
+    .stTabs [data-baseweb="tab"] {
+        background-color: transparent;
+        color: #6e6e6e;
+        padding: 8px 16px;
+        border-radius: 8px;
+        transition: background-color 0.3s;
+    }
+    .stTabs [data-baseweb="tab"]:hover {
+        background-color: #e0e0e0;
+    }
+    .stTabs [data-baseweb="tab"][aria-selected="true"] {
+        background-color: #007aff;
+        color: white;
+    }
     </style>
     """,
     unsafe_allow_html=True
@@ -216,14 +236,22 @@ else:
 
 if df is not None:
     try:
-        st.markdown('<div class="card"><h3>🌍 Regional Dashboard</h3><p>Filter sales data by region to analyze trends. Select "All" for overall data or a specific region (Urban, Suburban, Rural) to focus on localized patterns. Interpret the filtered data as a subset of total sales influenced by regional factors.</p></div>', unsafe_allow_html=True)
-        region_filter = st.selectbox("Region", ["All", "Urban", "Suburban", "Rural"])
-        df_filtered = df if region_filter == "All" else df[df[f"region_{region_filter}"] == 1]
+        # Main tabs
+        tabs = st.tabs(["🌍 Regional Dashboard", "⚙️ Model Hyperparameters", "📊 Feature Importance", 
+                       "🔗 Correlation Matrix", "📈 Actual vs Predicted", "🚨 Anomalies", 
+                       "📦 Stock vs Demand", "📦 Reorder Recommendations", "🧮 Model Equation", 
+                       "🔮 Future Predictions", "🔍 What-If Analysis", "📥 Download Historical Data"])
 
-        st.markdown('<div class="card"><h3>⚙️ Model Hyperparameters</h3><p>Adjust the XGBoost model"s complexity. "Trees" controls the number of decision trees, "Depth" limits tree depth, and "L1 Reg" adds regularization. Higher values increase accuracy but may overfit; interpret as a trade-off between precision and generalization.</p></div>', unsafe_allow_html=True)
-        n_estimators = st.slider("Trees", 10, 200, 50, 10)
-        max_depth = st.slider("Depth", 1, 10, 2, 1)
-        reg_alpha = st.slider("L1 Reg", 0.0, 1.0, 0.1, 0.05)
+        with tabs[0]:  # Regional Dashboard
+            st.markdown('<div class="card"><h3>🌍 Regional Dashboard</h3><p>Filter sales data by region to analyze trends. Select "All" for overall data or a specific region (Urban, Suburban, Rural) to focus on localized patterns. Interpret the filtered data as a subset of total sales influenced by regional factors.</p></div>', unsafe_allow_html=True)
+            region_filter = st.selectbox("Region", ["All", "Urban", "Suburban", "Rural"])
+            df_filtered = df if region_filter == "All" else df[df[f"region_{region_filter}"] == 1]
+
+        with tabs[1]:  # Model Hyperparameters
+            st.markdown('<div class="card"><h3>⚙️ Model Hyperparameters</h3><p>Adjust the XGBoost model"s complexity. "Trees" controls the number of decision trees, "Depth" limits tree depth, and "L1 Reg" adds regularization. Higher values increase accuracy but may overfit; interpret as a trade-off between precision and generalization.</p></div>', unsafe_allow_html=True)
+            n_estimators = st.slider("Trees", 10, 200, 50, 10)
+            max_depth = st.slider("Depth", 1, 10, 2, 1)
+            reg_alpha = st.slider("L1 Reg", 0.0, 1.0, 0.1, 0.05)
         
         features = ["is_weekend", "temperature", "football_match", "holiday", 
                    "precipitation", "lead_time", "promotion", "day_of_week", 
@@ -279,214 +307,224 @@ if df is not None:
         df["reorder_quantity"] = (df["predicted"] * (df["lead_time"] + 1) * urban_buffer * disruption_buffer - df["stock_level"]).clip(0)
         df_filtered["reorder_quantity"] = df["reorder_quantity"][df_filtered.index]
 
-        st.markdown('<div class="card"><h3>📊 Feature Importance</h3><p>Shows the relative impact of each feature on sales predictions. Higher bars indicate stronger influence. Interpret by category (e.g., Weather, Historical) to understand key drivers.</p></div>', unsafe_allow_html=True)
-        try:
-            fig, ax = plt.subplots(figsize=(10, 5))
-            sns.barplot(data=importance_df, x="importance", y="feature", hue="category", ax=ax)
-            ax.set_title("Feature Importance")
-            for spine in ax.spines.values():
-                spine.set_visible(False)
-            ax.grid(True)
-            st.pyplot(fig)
-            with st.expander("Table"): st.dataframe(importance_df)
-        except Exception as e: st.error(f"Feature importance error: {str(e)}")
-
-        st.markdown('<div class="card"><h3>🔗 Correlation Matrix</h3><p>Displays correlations between sales and top features. Values close to 1 or -1 indicate strong positive or negative relationships. Use the threshold to filter weak correlations.</p></div>', unsafe_allow_html=True)
-        try:
-            top_features = importance_df["feature"].head(5).tolist()
-            corr_features = ["units_sold"] + top_features
-            corr_features = [f for f in corr_features if f in df_filtered.columns]
-            threshold = st.slider("Corr Threshold", 0.0, 1.0, 0.3, 0.1)
-            corr_matrix = compute_correlation_matrix(df_filtered, corr_features, threshold)
-            fig, ax = plt.subplots(figsize=(10, 8))
-            sns.heatmap(corr_matrix, annot=True, cmap="RdBu", center=0, fmt=".2f", ax=ax)
-            ax.set_title("Correlation Matrix")
-            for spine in ax.spines.values():
-                spine.set_visible(False)
-            ax.grid(True)
-            st.pyplot(fig)
-            strong_corr = corr_matrix["units_sold"].drop("units_sold")[abs(corr_matrix["units_sold"].drop("units_sold")) > 0.5]
-            if not strong_corr.empty:
-                st.write("**Strong Correlations (>0.5)**")
-                st.dataframe(pd.DataFrame({"Feature": strong_corr.index, "Value": strong_corr.values}))
-        except Exception as e: st.error(f"Correlation error: {str(e)}")
-
-        st.markdown('<div class="card"><h3>📈 Actual vs Predicted</h3><p>Compares actual sales (blue) with predicted sales (orange dashed). Use to assess model accuracy; close alignment indicates good predictions, while deviations suggest areas for improvement.</p></div>', unsafe_allow_html=True)
-        try:
-            if df_filtered["units_sold"].isna().any() or df_filtered["predicted"].isna().any():
-                df_filtered["units_sold"] = df_filtered["units_sold"].fillna(df_filtered["units_sold"].mean())
-                df_filtered["predicted"] = df_filtered["predicted"].fillna(df_filtered["predicted"].mean())
-            fig, ax = plt.subplots(figsize=(14, 4))
-            sns.lineplot(data=df_filtered, x="date", y="units_sold", label="Actual", ax=ax, color="#1f77b4")
-            sns.lineplot(data=df_filtered, x="date", y="predicted", label="Predicted", ax=ax, color="#ff7f0e", linestyle="--")
-            ax.set_title(f"Actual vs Predicted ({region_filter})")
-            for spine in ax.spines.values():
-                spine.set_visible(False)
-            ax.grid(True)
-            st.pyplot(fig)
-        except Exception as e: st.error(f"Forecast error: {str(e)}")
-
-        st.markdown('<div class="card"><h3>🚨 Anomalies</h3><p>Highlights unusual sales spikes (red dots) against actual sales (blue). Filter by cause to identify events like promotions or disruptions; interpret as outliers needing investigation.</p></div>', unsafe_allow_html=True)
-        anomalies = df_filtered[df_filtered["anomaly"]]
-        causes = sorted(anomalies["root_cause_hint"].unique())
-        selected_causes = st.multiselect("Filter Causes", causes, default=causes)
-        filtered_anomalies = anomalies[anomalies["root_cause_hint"].isin(selected_causes)]
-        if not filtered_anomalies.empty:
+        with tabs[2]:  # Feature Importance
+            st.markdown('<div class="card"><h3>📊 Feature Importance</h3><p>Shows the relative impact of each feature on sales predictions. Higher bars indicate stronger influence. Interpret by category (e.g., Weather, Historical) to understand key drivers.</p></div>', unsafe_allow_html=True)
             try:
-                fig, ax = plt.subplots(figsize=(14, 4))
-                sns.lineplot(data=df_filtered, x="date", y="units_sold", label="Actual", ax=ax, color="#1f77b4")
-                sns.scatterplot(data=filtered_anomalies, x="date", y="units_sold", color="red", label="Anomaly", ax=ax)
-                ax.set_title(f"Anomalies ({region_filter})")
+                fig, ax = plt.subplots(figsize=(10, 5))
+                sns.barplot(data=importance_df, x="importance", y="feature", hue="category", ax=ax)
+                ax.set_title("Feature Importance")
                 for spine in ax.spines.values():
                     spine.set_visible(False)
                 ax.grid(True)
                 st.pyplot(fig)
-                st.dataframe(filtered_anomalies[["date", "units_sold", "predicted", "root_cause_hint"]])
-            except Exception as e: st.error(f"Anomaly plot error: {str(e)}")
+                with st.expander("Table"): st.dataframe(importance_df)
+            except Exception as e: st.error(f"Feature importance error: {str(e)}")
 
-        st.markdown('<div class="card"><h3>📦 Stock vs Demand</h3><p>Shows actual sales (blue), predicted sales (orange dashed), and stock levels (green). Use to identify stock shortages (when stock falls below predicted demand) and plan inventory.</p></div>', unsafe_allow_html=True)
-        try:
-            fig, ax = plt.subplots(figsize=(14, 4))
-            sns.lineplot(data=df_filtered, x="date", y="units_sold", label="Actual", ax=ax, color="#1f77b4")
-            sns.lineplot(data=df_filtered, x="date", y="predicted", label="Predicted", ax=ax, color="#ff7f0e", linestyle="--")
-            sns.lineplot(data=df_filtered, x="date", y="stock_level", label="Stock", ax=ax, color="#2ca02c")
-            ax.set_title(f"Stock vs Demand ({region_filter})")
-            for spine in ax.spines.values():
-                spine.set_visible(False)
-            ax.grid(True)
-            st.pyplot(fig)
-        except Exception as e: st.error(f"Stock plot error: {str(e)}")
-
-        st.markdown('<div class="card"><h3>📦 Reorder Recommendations</h3><p>Lists predicted sales, current stock, and suggested reorder quantities. A positive reorder value indicates the amount needed to meet demand; interpret as an inventory action plan.</p></div>', unsafe_allow_html=True)
-        st.dataframe(df_filtered[["date", "predicted", "stock_level", "reorder_quantity"]])
-
-        st.markdown('<div class="card"><h3>🧮 Model Equation</h3><p>Provides a simplified linear approximation of the prediction model based on top features. Use to understand which factors most affect sales; "others" represent minor contributors.</p></div>', unsafe_allow_html=True)
-        try:
-            top_features = importance_df.head(5)[["feature", "importance"]]
-            equation = "Predicted ≈ " + " + ".join([f"{imp:.3f}*{feat}" for feat, imp in zip(top_features["feature"], top_features["importance"])]) + " + others"
-            st.write(f"Model: XGBoost ({n_estimators} trees, depth={max_depth}, reg_alpha={reg_alpha})")
-            st.write(equation)
-            with st.expander("Table"): st.dataframe(top_features)
-        except Exception as e: st.error(f"Equation error: {str(e)}")
-
-        st.markdown('<div class="card"><h3>🔮 Future Predictions</h3><p>Upload future data to predict sales. Results show predicted units with uncertainty (±MAE). Interpret higher predictions as potential demand increases, adjusted by region.</p></div>', unsafe_allow_html=True)
-        sample_data = pd.DataFrame({
-            "date": ["2025-07-18", "2025-07-19"], "is_weekend": [0, 1], "temperature": [25.0, 28.0],
-            "football_match": [0, 1], "holiday": [0, 0], "season": ["Summer", "Summer"],
-            "precipitation": [0.0, 5.0], "lead_time": [3, 3], "beer_type": ["Lager", "IPA"],
-            "promotion": [0, 1], "stock_level": [100, 120], "customer_sentiment": [0.0, 0.5],
-            "competitor_promotion": [0, 0], "region": ["Urban", "Rural"], "supply_chain_disruption": [0, 0],
-            "units_sold_30d_avg": [150.0, 150.0]
-        })
-        st.download_button("📥 Sample CSV", data=sample_data.to_csv(index=False).encode(), file_name="sample_future.csv", mime="text/csv")
-
-        future_file = st.file_uploader("📤 Upload future data", type=["csv"], key="future_upload")
-        if future_file:
+        with tabs[3]:  # Correlation Matrix
+            st.markdown('<div class="card"><h3>🔗 Correlation Matrix</h3><p>Displays correlations between sales and top features. Values close to 1 or -1 indicate strong positive or negative relationships. Use the threshold to filter weak correlations.</p></div>', unsafe_allow_html=True)
             try:
-                future_df = load_and_process_data(future_file, is_future=True)
-                if future_df is not None:
-                    combined = pd.concat([df[["date", "units_sold"]], future_df.assign(units_sold=np.nan)])
-                    combined["units_sold_lag1"] = combined["units_sold"].shift(1).fillna(df["units_sold"].mean())
-                    combined["units_sold_7d_avg"] = combined["units_sold"].rolling(7, min_periods=1).mean().fillna(df["units_sold"].mean())
-                    future_df = future_df.merge(combined[["date", "units_sold_lag1", "units_sold_7d_avg"]], on="date")
-                    future_df = align_features(future_df, df, features)
-                    future_df["predicted"] = model.predict(future_df[features])
-                    future_df["uncertainty"] = f"±{mae:.2f}"
-                    future_region = st.selectbox("Future Region", ["All", "Urban", "Suburban", "Rural"], key="future_region")
-                    future_df_filtered = future_df if future_region == "All" else future_df[future_df[f"region_{future_region}"] == 1]
-                    st.write("**Predictions**")
-                    st.dataframe(future_df_filtered[["date", "predicted", "uncertainty"] + [c for c in future_df.columns if c in ["temperature", "football_match", "promotion"]]])
-                    st.download_button("📥 Predictions", data=future_df_filtered.to_csv(index=False).encode(), file_name=f"future_{future_region.lower()}.csv", mime="text/csv")
-            except Exception as e:
-                st.error(f"Future data error: {str(e)}")
+                top_features = importance_df["feature"].head(5).tolist()
+                corr_features = ["units_sold"] + top_features
+                corr_features = [f for f in corr_features if f in df_filtered.columns]
+                threshold = st.slider("Corr Threshold", 0.0, 1.0, 0.3, 0.1)
+                corr_matrix = compute_correlation_matrix(df_filtered, corr_features, threshold)
+                fig, ax = plt.subplots(figsize=(10, 8))
+                sns.heatmap(corr_matrix, annot=True, cmap="RdBu", center=0, fmt=".2f", ax=ax)
+                ax.set_title("Correlation Matrix")
+                for spine in ax.spines.values():
+                    spine.set_visible(False)
+                ax.grid(True)
+                st.pyplot(fig)
+                strong_corr = corr_matrix["units_sold"].drop("units_sold")[abs(corr_matrix["units_sold"].drop("units_sold")) > 0.5]
+                if not strong_corr.empty:
+                    st.write("**Strong Correlations (>0.5)**")
+                    st.dataframe(pd.DataFrame({"Feature": strong_corr.index, "Value": strong_corr.values}))
+            except Exception as e: st.error(f"Correlation error: {str(e)}")
 
-        st.markdown('<div class="what-if-container">', unsafe_allow_html=True)
-        st.markdown('<h3>🔍 What-If Analysis</h3>', unsafe_allow_html=True)
-        st.markdown('<p>Simulate sales for a custom scenario. Adjust inputs (e.g., weather, promotions) and click "Predict Sales" to see the result. Interpret the prediction as an estimate with ±MAE uncertainty based on historical accuracy.</p>', unsafe_allow_html=True)
-        with st.form(key="what_if_form_v6"):
-            # Temporal Factors
-            st.markdown('<div class="what-if-section"><h4>🗓️ Temporal Factors</h4></div>', unsafe_allow_html=True)
-            col1, col2 = st.columns(2)
-            with col1:
-                date = st.date_input("Date", value=pd.to_datetime("2025-07-17"), key="wi_date")
-                is_weekend = st.checkbox("Weekend", key="wi_weekend")
-            with col2:
-                holiday = st.checkbox("Holiday", key="wi_holiday")
-                football = st.checkbox("Football Match", key="wi_football")
+        with tabs[4]:  # Actual vs Predicted
+            st.markdown('<div class="card"><h3>📈 Actual vs Predicted</h3><p>Compares actual sales (blue) with predicted sales (orange dashed). Use to assess model accuracy; close alignment indicates good predictions, while deviations suggest areas for improvement.</p></div>', unsafe_allow_html=True)
+            try:
+                if df_filtered["units_sold"].isna().any() or df_filtered["predicted"].isna().any():
+                    df_filtered["units_sold"] = df_filtered["units_sold"].fillna(df_filtered["units_sold"].mean())
+                    df_filtered["predicted"] = df_filtered["predicted"].fillna(df_filtered["predicted"].mean())
+                fig, ax = plt.subplots(figsize=(14, 4))
+                sns.lineplot(data=df_filtered, x="date", y="units_sold", label="Actual", ax=ax, color="#1f77b4")
+                sns.lineplot(data=df_filtered, x="date", y="predicted", label="Predicted", ax=ax, color="#ff7f0e", linestyle="--")
+                ax.set_title(f"Actual vs Predicted ({region_filter})")
+                for spine in ax.spines.values():
+                    spine.set_visible(False)
+                ax.grid(True)
+                st.pyplot(fig)
+            except Exception as e: st.error(f"Forecast error: {str(e)}")
 
-            # Weather Conditions
-            st.markdown('<div class="what-if-section"><h4>🌡️ Weather Conditions</h4></div>', unsafe_allow_html=True)
-            col1, col2 = st.columns(2)
-            with col1:
-                temp = st.slider("Temperature (°C)", 0.0, 40.0, 20.0, key="wi_temp")
-            with col2:
-                precip = st.slider("Precipitation (mm)", 0.0, 50.0, 0.0, key="wi_precip")
-
-            # Inventory & Logistics
-            st.markdown('<div class="what-if-section"><h4>📦 Inventory & Logistics</h4></div>', unsafe_allow_html=True)
-            col1, col2 = st.columns(2)
-            with col1:
-                stock = st.number_input("Stock", 0, 1000, 100, key="wi_stock")
-                lead = st.number_input("Lead Time", 0, 10, 3, key="wi_lead")
-            with col2:
-                disruption = st.checkbox("Supply Disruption", key="wi_disrupt")
-
-            # Marketing & Market
-            st.markdown('<div class="what-if-section"><h4>📢 Marketing & Market</h4></div>', unsafe_allow_html=True)
-            col1, col2 = st.columns(2)
-            with col1:
-                promo = st.checkbox("Promotion", key="wi_promo")
-                comp_promo = st.checkbox("Competitor Promo", key="wi_comp")
-            with col2:
-                sentiment = st.slider("Customer Sentiment", -1.0, 1.0, 0.0, key="wi_sent")
-
-            # Product Context
-            st.markdown('<div class="what-if-section"><h4>🍺 Product Context</h4></div>', unsafe_allow_html=True)
-            col1, col2 = st.columns(2)
-            with col1:
-                beer = st.selectbox("Beer Type", df["beer_type"].unique() if "beer_type" in df.columns else ["Lager"], key="wi_beer")
-                region = st.selectbox("Region", ["Urban", "Suburban", "Rural"], key="wi_region")
-            with col2:
-                season = st.selectbox("Season", ["Spring", "Summer", "Fall", "Winter"], key="wi_season")
-
-            # Sales History Input
-            st.markdown('<div class="what-if-section"><h4>📊 Sales History Input</h4></div>', unsafe_allow_html=True)
-            col1, col2 = st.columns(2)
-            with col1:
-                avg_sales = st.number_input("30d Avg", 0.0, 1000.0, df["units_sold"].mean(), key="wi_avg")
-            with col2:
-                st.write("Lag1 & 7d Avg calculated internally")
-
-            submitted = st.form_submit_button("Predict Sales")
-            
-            if submitted:
+        with tabs[5]:  # Anomalies
+            st.markdown('<div class="card"><h3>🚨 Anomalies</h3><p>Highlights unusual sales spikes (red dots) against actual sales (blue). Filter by cause to identify events like promotions or disruptions; interpret as outliers needing investigation.</p></div>', unsafe_allow_html=True)
+            anomalies = df_filtered[df_filtered["anomaly"]]
+            causes = sorted(anomalies["root_cause_hint"].unique())
+            selected_causes = st.multiselect("Filter Causes", causes, default=causes)
+            filtered_anomalies = anomalies[anomalies["root_cause_hint"].isin(selected_causes)]
+            if not filtered_anomalies.empty:
                 try:
-                    lag1_mean = df["units_sold_lag1"].mean() if "units_sold_lag1" in df.columns else df["units_sold"].mean()
-                    avg7d_mean = df["units_sold_7d_avg"].mean() if "units_sold_7d_avg" in df.columns else df["units_sold"].mean()
-                    scenario = pd.DataFrame({
-                        "date": [pd.to_datetime(date)], "is_weekend": [1 if is_weekend else 0],
-                        "temperature": [temp], "football_match": [1 if football else 0],
-                        "holiday": [1 if holiday else 0], "season": [season],
-                        "precipitation": [precip], "lead_time": [lead], "beer_type": [beer],
-                        "promotion": [1 if promo else 0], "stock_level": [stock],
-                        "customer_sentiment": [sentiment], "competitor_promotion": [1 if comp_promo else 0],
-                        "region": [region], "supply_chain_disruption": [1 if disruption else 0],
-                        "units_sold_30d_avg": [avg_sales], "units_sold_lag1": [lag1_mean],
-                        "units_sold_7d_avg": [avg7d_mean]
-                    })
-                    scenario = load_and_process_data(io.StringIO(scenario.to_csv(index=False)), is_future=True)
-                    if scenario is not None:
-                        scenario = align_features(scenario, df, features)
-                        pred = model.predict(scenario[features])[0]
-                        st.success(f"Predicted: {pred:.2f} ±{mae:.2f}")
-                except Exception as e:
-                    st.error(f"Scenario error: {str(e)}")
-            else:
-                st.info("Click 'Predict Sales' to see results")
-        st.markdown('</div>', unsafe_allow_html=True)
+                    fig, ax = plt.subplots(figsize=(14, 4))
+                    sns.lineplot(data=df_filtered, x="date", y="units_sold", label="Actual", ax=ax, color="#1f77b4")
+                    sns.scatterplot(data=filtered_anomalies, x="date", y="units_sold", color="red", label="Anomaly", ax=ax)
+                    ax.set_title(f"Anomalies ({region_filter})")
+                    for spine in ax.spines.values():
+                        spine.set_visible(False)
+                    ax.grid(True)
+                    st.pyplot(fig)
+                    st.dataframe(filtered_anomalies[["date", "units_sold", "predicted", "root_cause_hint"]])
+                except Exception as e: st.error(f"Anomaly plot error: {str(e)}")
 
-        st.markdown('<div class="card"><h3>📥 Download Historical Data</h3><p>Download the filtered historical data with predictions. Use to export results for further analysis; includes all columns shown in the dashboard.</p></div>', unsafe_allow_html=True)
-        st.download_button("Download Forecast", data=df_filtered.to_csv(index=False).encode(), file_name=f"forecast_{region_filter.lower()}.csv", mime="text/csv")
+        with tabs[6]:  # Stock vs Demand
+            st.markdown('<div class="card"><h3>📦 Stock vs Demand</h3><p>Shows actual sales (blue), predicted sales (orange dashed), and stock levels (green). Use to identify stock shortages (when stock falls below predicted demand) and plan inventory.</p></div>', unsafe_allow_html=True)
+            try:
+                fig, ax = plt.subplots(figsize=(14, 4))
+                sns.lineplot(data=df_filtered, x="date", y="units_sold", label="Actual", ax=ax, color="#1f77b4")
+                sns.lineplot(data=df_filtered, x="date", y="predicted", label="Predicted", ax=ax, color="#ff7f0e", linestyle="--")
+                sns.lineplot(data=df_filtered, x="date", y="stock_level", label="Stock", ax=ax, color="#2ca02c")
+                ax.set_title(f"Stock vs Demand ({region_filter})")
+                for spine in ax.spines.values():
+                    spine.set_visible(False)
+                ax.grid(True)
+                st.pyplot(fig)
+            except Exception as e: st.error(f"Stock plot error: {str(e)}")
+
+        with tabs[7]:  # Reorder Recommendations
+            st.markdown('<div class="card"><h3>📦 Reorder Recommendations</h3><p>Lists predicted sales, current stock, and suggested reorder quantities. A positive reorder value indicates the amount needed to meet demand; interpret as an inventory action plan.</p></div>', unsafe_allow_html=True)
+            st.dataframe(df_filtered[["date", "predicted", "stock_level", "reorder_quantity"]])
+
+        with tabs[8]:  # Model Equation
+            st.markdown('<div class="card"><h3>🧮 Model Equation</h3><p>Provides a simplified linear approximation of the prediction model based on top features. Use to understand which factors most affect sales; "others" represent minor contributors.</p></div>', unsafe_allow_html=True)
+            try:
+                top_features = importance_df.head(5)[["feature", "importance"]]
+                equation = "Predicted ≈ " + " + ".join([f"{imp:.3f}*{feat}" for feat, imp in zip(top_features["feature"], top_features["importance"])]) + " + others"
+                st.write(f"Model: XGBoost ({n_estimators} trees, depth={max_depth}, reg_alpha={reg_alpha})")
+                st.write(equation)
+                with st.expander("Table"): st.dataframe(top_features)
+            except Exception as e: st.error(f"Equation error: {str(e)}")
+
+        with tabs[9]:  # Future Predictions
+            st.markdown('<div class="card"><h3>🔮 Future Predictions</h3><p>Upload future data to predict sales. Results show predicted units with uncertainty (±MAE). Interpret higher predictions as potential demand increases, adjusted by region.</p></div>', unsafe_allow_html=True)
+            sample_data = pd.DataFrame({
+                "date": ["2025-07-18", "2025-07-19"], "is_weekend": [0, 1], "temperature": [25.0, 28.0],
+                "football_match": [0, 1], "holiday": [0, 0], "season": ["Summer", "Summer"],
+                "precipitation": [0.0, 5.0], "lead_time": [3, 3], "beer_type": ["Lager", "IPA"],
+                "promotion": [0, 1], "stock_level": [100, 120], "customer_sentiment": [0.0, 0.5],
+                "competitor_promotion": [0, 0], "region": ["Urban", "Rural"], "supply_chain_disruption": [0, 0],
+                "units_sold_30d_avg": [150.0, 150.0]
+            })
+            st.download_button("📥 Sample CSV", data=sample_data.to_csv(index=False).encode(), file_name="sample_future.csv", mime="text/csv")
+
+            future_file = st.file_uploader("📤 Upload future data", type=["csv"], key="future_upload")
+            if future_file:
+                try:
+                    future_df = load_and_process_data(future_file, is_future=True)
+                    if future_df is not None:
+                        combined = pd.concat([df[["date", "units_sold"]], future_df.assign(units_sold=np.nan)])
+                        combined["units_sold_lag1"] = combined["units_sold"].shift(1).fillna(df["units_sold"].mean())
+                        combined["units_sold_7d_avg"] = combined["units_sold"].rolling(7, min_periods=1).mean().fillna(df["units_sold"].mean())
+                        future_df = future_df.merge(combined[["date", "units_sold_lag1", "units_sold_7d_avg"]], on="date")
+                        future_df = align_features(future_df, df, features)
+                        future_df["predicted"] = model.predict(future_df[features])
+                        future_df["uncertainty"] = f"±{mae:.2f}"
+                        future_region = st.selectbox("Future Region", ["All", "Urban", "Suburban", "Rural"], key="future_region")
+                        future_df_filtered = future_df if future_region == "All" else future_df[future_df[f"region_{future_region}"] == 1]
+                        st.write("**Predictions**")
+                        st.dataframe(future_df_filtered[["date", "predicted", "uncertainty"] + [c for c in future_df.columns if c in ["temperature", "football_match", "promotion"]]])
+                        st.download_button("📥 Predictions", data=future_df_filtered.to_csv(index=False).encode(), file_name=f"future_{future_region.lower()}.csv", mime="text/csv")
+                except Exception as e:
+                    st.error(f"Future data error: {str(e)}")
+
+        with tabs[10]:  # What-If Analysis
+            st.markdown('<div class="what-if-container">', unsafe_allow_html=True)
+            st.markdown('<h3>🔍 What-If Analysis</h3>', unsafe_allow_html=True)
+            st.markdown('<p>Simulate sales for a custom scenario. Adjust inputs (e.g., weather, promotions) and click "Predict Sales" to see the result. Interpret the prediction as an estimate with ±MAE uncertainty based on historical accuracy.</p>', unsafe_allow_html=True)
+            with st.form(key="what_if_form_v6"):
+                # Temporal Factors
+                st.markdown('<div class="what-if-section"><h4>🗓️ Temporal Factors</h4></div>', unsafe_allow_html=True)
+                col1, col2 = st.columns(2)
+                with col1:
+                    date = st.date_input("Date", value=pd.to_datetime("2025-07-17"), key="wi_date")
+                    is_weekend = st.checkbox("Weekend", key="wi_weekend")
+                with col2:
+                    holiday = st.checkbox("Holiday", key="wi_holiday")
+                    football = st.checkbox("Football Match", key="wi_football")
+
+                # Weather Conditions
+                st.markdown('<div class="what-if-section"><h4>🌡️ Weather Conditions</h4></div>', unsafe_allow_html=True)
+                col1, col2 = st.columns(2)
+                with col1:
+                    temp = st.slider("Temperature (°C)", 0.0, 40.0, 20.0, key="wi_temp")
+                with col2:
+                    precip = st.slider("Precipitation (mm)", 0.0, 50.0, 0.0, key="wi_precip")
+
+                # Inventory & Logistics
+                st.markdown('<div class="what-if-section"><h4>📦 Inventory & Logistics</h4></div>', unsafe_allow_html=True)
+                col1, col2 = st.columns(2)
+                with col1:
+                    stock = st.number_input("Stock", 0, 1000, 100, key="wi_stock")
+                    lead = st.number_input("Lead Time", 0, 10, 3, key="wi_lead")
+                with col2:
+                    disruption = st.checkbox("Supply Disruption", key="wi_disrupt")
+
+                # Marketing & Market
+                st.markdown('<div class="what-if-section"><h4>📢 Marketing & Market</h4></div>', unsafe_allow_html=True)
+                col1, col2 = st.columns(2)
+                with col1:
+                    promo = st.checkbox("Promotion", key="wi_promo")
+                    comp_promo = st.checkbox("Competitor Promo", key="wi_comp")
+                with col2:
+                    sentiment = st.slider("Customer Sentiment", -1.0, 1.0, 0.0, key="wi_sent")
+
+                # Product Context
+                st.markdown('<div class="what-if-section"><h4>🍺 Product Context</h4></div>', unsafe_allow_html=True)
+                col1, col2 = st.columns(2)
+                with col1:
+                    beer = st.selectbox("Beer Type", df["beer_type"].unique() if "beer_type" in df.columns else ["Lager"], key="wi_beer")
+                    region = st.selectbox("Region", ["Urban", "Suburban", "Rural"], key="wi_region")
+                with col2:
+                    season = st.selectbox("Season", ["Spring", "Summer", "Fall", "Winter"], key="wi_season")
+
+                # Sales History Input
+                st.markdown('<div class="what-if-section"><h4>📊 Sales History Input</h4></div>', unsafe_allow_html=True)
+                col1, col2 = st.columns(2)
+                with col1:
+                    avg_sales = st.number_input("30d Avg", 0.0, 1000.0, df["units_sold"].mean(), key="wi_avg")
+                with col2:
+                    st.write("Lag1 & 7d Avg calculated internally")
+
+                submitted = st.form_submit_button("Predict Sales")
+                
+                if submitted:
+                    try:
+                        lag1_mean = df["units_sold_lag1"].mean() if "units_sold_lag1" in df.columns else df["units_sold"].mean()
+                        avg7d_mean = df["units_sold_7d_avg"].mean() if "units_sold_7d_avg" in df.columns else df["units_sold"].mean()
+                        scenario = pd.DataFrame({
+                            "date": [pd.to_datetime(date)], "is_weekend": [1 if is_weekend else 0],
+                            "temperature": [temp], "football_match": [1 if football else 0],
+                            "holiday": [1 if holiday else 0], "season": [season],
+                            "precipitation": [precip], "lead_time": [lead], "beer_type": [beer],
+                            "promotion": [1 if promo else 0], "stock_level": [stock],
+                            "customer_sentiment": [sentiment], "competitor_promotion": [1 if comp_promo else 0],
+                            "region": [region], "supply_chain_disruption": [1 if disruption else 0],
+                            "units_sold_30d_avg": [avg_sales], "units_sold_lag1": [lag1_mean],
+                            "units_sold_7d_avg": [avg7d_mean]
+                        })
+                        scenario = load_and_process_data(io.StringIO(scenario.to_csv(index=False)), is_future=True)
+                        if scenario is not None:
+                            scenario = align_features(scenario, df, features)
+                            pred = model.predict(scenario[features])[0]
+                            st.success(f"Predicted: {pred:.2f} ±{mae:.2f}")
+                    except Exception as e:
+                        st.error(f"Scenario error: {str(e)}")
+                else:
+                    st.info("Click 'Predict Sales' to see results")
+            st.markdown('</div>', unsafe_allow_html=True)
+
+        with tabs[11]:  # Download Historical Data
+            st.markdown('<div class="card"><h3>📥 Download Historical Data</h3><p>Download the filtered historical data with predictions. Use to export results for further analysis; includes all columns shown in the dashboard.</p></div>', unsafe_allow_html=True)
+            st.download_button("Download Forecast", data=df_filtered.to_csv(index=False).encode(), file_name=f"forecast_{region_filter.lower()}.csv", mime="text/csv")
 
     except Exception as e:
         st.error(f"App error: {str(e)}")
