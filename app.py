@@ -126,23 +126,15 @@ st.markdown(
         font-size: 0.9em;
         margin: 0 0 15px 0;
     }
-    .what-if-card {
-        background-color: #f9f9f9;
-        border-radius: 8px;
-        padding: 10px;
-        margin-bottom: 10px;
+    .what-if-section {
+        margin-bottom: 15px;
     }
-    .what-if-card h4 {
+    .what-if-section h4 {
         color: #007aff;
         font-size: 1em;
         margin-bottom: 5px;
-    }
-    .what-if-card .stForm > div {
-        margin: 5px 0;
-    }
-    .what-if-container .stForm .stFormSubmitButton {
-        align-self: flex-start;
-        margin-top: 10px;
+        padding-bottom: 5px;
+        border-bottom: 1px solid #e0e0e0;
     }
     </style>
     """,
@@ -413,7 +405,7 @@ if df is not None:
         st.markdown('<p>Simulate sales for a custom scenario. Adjust inputs (e.g., weather, promotions) and click "Predict Sales" to see the result. Interpret the prediction as an estimate with ±MAE uncertainty based on historical accuracy.</p>', unsafe_allow_html=True)
         with st.form(key="what_if_form_v6"):
             # Temporal Factors
-            st.markdown('<div class="what-if-card"><h4>🗓️ Temporal Factors</h4></div>', unsafe_allow_html=True)
+            st.markdown('<div class="what-if-section"><h4>🗓️ Temporal Factors</h4></div>', unsafe_allow_html=True)
             col1, col2 = st.columns(2)
             with col1:
                 date = st.date_input("Date", value=pd.to_datetime("2025-07-17"), key="wi_date")
@@ -423,7 +415,7 @@ if df is not None:
                 football = st.checkbox("Football Match", key="wi_football")
 
             # Weather Conditions
-            st.markdown('<div class="what-if-card"><h4>🌡️ Weather Conditions</h4></div>', unsafe_allow_html=True)
+            st.markdown('<div class="what-if-section"><h4>🌡️ Weather Conditions</h4></div>', unsafe_allow_html=True)
             col1, col2 = st.columns(2)
             with col1:
                 temp = st.slider("Temperature (°C)", 0.0, 40.0, 20.0, key="wi_temp")
@@ -431,7 +423,7 @@ if df is not None:
                 precip = st.slider("Precipitation (mm)", 0.0, 50.0, 0.0, key="wi_precip")
 
             # Inventory & Logistics
-            st.markdown('<div class="what-if-card"><h4>📦 Inventory & Logistics</h4></div>', unsafe_allow_html=True)
+            st.markdown('<div class="what-if-section"><h4>📦 Inventory & Logistics</h4></div>', unsafe_allow_html=True)
             col1, col2 = st.columns(2)
             with col1:
                 stock = st.number_input("Stock", 0, 1000, 100, key="wi_stock")
@@ -440,7 +432,7 @@ if df is not None:
                 disruption = st.checkbox("Supply Disruption", key="wi_disrupt")
 
             # Marketing & Market
-            st.markdown('<div class="what-if-card"><h4>📢 Marketing & Market</h4></div>', unsafe_allow_html=True)
+            st.markdown('<div class="what-if-section"><h4>📢 Marketing & Market</h4></div>', unsafe_allow_html=True)
             col1, col2 = st.columns(2)
             with col1:
                 promo = st.checkbox("Promotion", key="wi_promo")
@@ -449,7 +441,7 @@ if df is not None:
                 sentiment = st.slider("Customer Sentiment", -1.0, 1.0, 0.0, key="wi_sent")
 
             # Product Context
-            st.markdown('<div class="what-if-card"><h4>🍺 Product Context</h4></div>', unsafe_allow_html=True)
+            st.markdown('<div class="what-if-section"><h4>🍺 Product Context</h4></div>', unsafe_allow_html=True)
             col1, col2 = st.columns(2)
             with col1:
                 beer = st.selectbox("Beer Type", df["beer_type"].unique() if "beer_type" in df.columns else ["Lager"], key="wi_beer")
@@ -458,13 +450,12 @@ if df is not None:
                 season = st.selectbox("Season", ["Spring", "Summer", "Fall", "Winter"], key="wi_season")
 
             # Sales History Input
-            st.markdown('<div class="what-if-card"><h4>📊 Sales History Input</h4></div>', unsafe_allow_html=True)
+            st.markdown('<div class="what-if-section"><h4>📊 Sales History Input</h4></div>', unsafe_allow_html=True)
             col1, col2 = st.columns(2)
             with col1:
                 avg_sales = st.number_input("30d Avg", 0.0, 1000.0, df["units_sold"].mean(), key="wi_avg")
             with col2:
-                # Note: lag1 and 7d avg are calculated internally, not user inputs
-                pass
+                st.write("Lag1 & 7d Avg calculated internally")
 
             submitted = st.form_submit_button("Predict Sales")
             
