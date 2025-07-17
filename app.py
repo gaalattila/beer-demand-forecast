@@ -406,7 +406,7 @@ if df is not None:
         st.markdown('<div class="what-if-block">', unsafe_allow_html=True)
         st.markdown('<h3>🔍 What-If Analysis</h3>', unsafe_allow_html=True)
         st.markdown('<p>Simulate sales for a custom scenario. Adjust inputs (e.g., weather, promotions) and click "Predict Sales" to see the result. Interpret the prediction as an estimate with ±MAE uncertainty based on historical accuracy.</p>', unsafe_allow_html=True)
-        try:
+        with st.container():
             with st.form(key="what_if_form_v6"):
                 col1, col2 = st.columns(2)
                 with col1:
@@ -454,8 +454,6 @@ if df is not None:
                         st.error(f"Scenario error: {str(e)}")
                 else:
                     st.info("Click 'Predict Sales' to see results.")
-        except Exception as e:
-            st.error(f"Form initialization error: {str(e)}")
         st.markdown('</div>', unsafe_allow_html=True)
 
         st.markdown('<div class="card"><h3>📥 Download Historical Data</h3><p>Download the filtered historical data with predictions. Use to export results for further analysis; includes all columns shown in the dashboard.</p></div>', unsafe_allow_html=True)
