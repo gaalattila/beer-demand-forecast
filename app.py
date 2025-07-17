@@ -4,9 +4,13 @@ import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 from xgboost import XGBRegressor
+from sklearn.ensemble import RandomForestRegressor, IsolationForest
+from sklearn.linear_model import LinearRegression
 from sklearn.metrics import mean_absolute_error
+from sklearn.preprocessing import StandardScaler
 import io
 import os
+from scipy import stats
 
 # Set Matplotlib style for iOS-inspired graphs
 plt.rcParams['font.family'] = 'San Francisco'  # iOS default font (approximated with system sans-serif)
@@ -150,6 +154,10 @@ st.markdown(
 st.set_page_config(page_title="🍺 Beer Forecast", layout="wide")
 st.markdown('<h1 style="color: #6e6e6e;">🍺 Beer Demand Forecast & Anomaly Detection</h1>', unsafe_allow_html=True)
 
+# Initialize session state for metrics
+if 'model_metrics' not in st.session_state:
+    st.session_state.model_metrics = []
+
 @st.cache_data
 def load_and_process_data(file_path, is_future=False):
     try:
@@ -233,10 +241,11 @@ if df is not None:
             df_filtered = df if region_filter == "All" else df[df[f"region_{region_filter}"] == 1]
 
         with tabs[1]:  # Model Hyperparameters
-            st.markdown('<div class="card"><h3>⚙️ Model Hyperparameters</h3><p>Adjust the XGBoost model"s complexity. "Trees" controls the number of decision trees, "Depth" limits tree depth, and "L1 Reg" adds regularization. Higher values increase accuracy but may overfit; interpret as a trade-off between precision and generalization.</p></div>', unsafe_allow_html=True)
-            n_estimators = st.slider("Trees", 10, 200, 50, 10)
-            max_depth = st.slider("Depth", 1, 10, 2, 1)
-            reg_alpha = st.slider("L1 Reg", 0.0, 1.0, 0.1, 0.05)
+            st.markdown('<div class="card"><h3>⚙️ Model Hyperparameters</h3><p>Adjust the model"s complexity. "Trees" controls the number of decision trees (for XGB/RF), "Depth" limits tree depth (for XGB/RF), and "L1 Reg" adds regularization (for XGB). Higher values increase accuracy but may overfit; interpret as a trade-off between precision and generalization.</p></div>', unsafe_allow_html=True)
+            model_type = st.selectbox("Model", ["XGBRegressor", "RandomForestRegressor", "LinearRegression"])
+            n_estimators = st.slider("Trees", 10, 200, 50, 10) if model_type in ["XGBRegressor", "RandomForestRegressor"] else 0
+            max_depth = st.slider("Depth", 1, 10, 2, 1) if model_type in ["XGBRegressor", "RandomForestRegressor"] else 0
+            reg_alpha = st.slider("L1 Reg", 0.0, 1.0, 0.1, 0.05) if model_type == "XGBRegressor" else 0.0
         
         features = ["is_weekend", "temperature", "football_match", "holiday", 
                    "precipitation", "lead_time", "promotion", "day_of_week", 
@@ -246,13 +255,24 @@ if df is not None:
         X = df[features]
         y = df["units_sold"]
 
-        model = XGBRegressor(n_estimators=n_estimators, max_depth=max_depth, reg_alpha=reg_alpha)
-        model.fit(X, y)
+        @st.cache_resource
+        def train_model(model_type, n_estimators, max_depth, reg_alpha, X, y):
+            if model_type == "XGBRegressor":
+                model = XGBRegressor(n_estimators=n_estimators, max_depth=max_depth, reg_alpha=reg_alpha)
+            elif model_type == "RandomForestRegressor":
+                model = RandomForestRegressor(n_estimators=n_estimators, max_depth=max_depth)
+            else:  # LinearRegression
+                model = LinearRegression()
+            model.fit(X, y)
+            return model
+
+        model = train_model(model_type, n_estimators, max_depth, reg_alpha, X, y)
         df["predicted"] = model.predict(X)
         df_filtered["predicted"] = df["predicted"][df_filtered.index]
         mae = mean_absolute_error(df_filtered["units_sold"], df_filtered["predicted"])
+        st.session_state.model_metrics.append({"model": model_type, "mae": mae, "time": pd.Timestamp.now().strftime("%H:%M:%S")})
 
-        importance = model.feature_importances_
+        importance = model.feature_importances_ if hasattr(model, "feature_importances_") else np.zeros(len(features))
         categories = {k: v for k, v in {
             "is_weekend": "Temporal", "temperature": "Weather", "football_match": "Event",
             "holiday": "Holiday", "precipitation": "Weather", "lead_time": "Inventory",
@@ -268,9 +288,15 @@ if df is not None:
         importance_df = pd.DataFrame({"feature": features, "importance": importance,
                                     "category": [categories.get(f, "Other") for f in features]}).sort_values("importance", ascending=False)
 
-        df["error"] = abs(df["units_sold"] - df["predicted"])
-        threshold = df["error"].mean() + 2 * df["error"].std()
-        df["anomaly"] = df["error"] > threshold
+        # Anomaly detection with Isolation Forest
+        scaler = StandardScaler()
+        X_scaled = scaler.fit_transform(df[features])
+        iso_forest = IsolationForest(contamination=0.1, random_state=42)
+        df["anomaly_score"] = iso_forest.fit_predict(X_scaled)
+        df["anomaly"] = df["anomaly_score"] == -1
+        df_filtered["anomaly"] = df["anomaly"][df_filtered.index]
+        sensitivity = st.slider("Anomaly Sensitivity", 0.01, 0.2, 0.1, 0.01, key="anomaly_sensitivity")
+        df["anomaly"] = iso_forest.fit_predict(X_scaled, sample_weight=1 - sensitivity) == -1
         df_filtered["anomaly"] = df["anomaly"][df_filtered.index]
 
         def root_cause(row):
@@ -384,7 +410,7 @@ if df is not None:
             try:
                 top_features = importance_df.head(5)[["feature", "importance"]]
                 equation = "Predicted ≈ " + " + ".join([f"{imp:.3f}*{feat}" for feat, imp in zip(top_features["feature"], top_features["importance"])]) + " + others"
-                st.write(f"Model: XGBoost ({n_estimators} trees, depth={max_depth}, reg_alpha={reg_alpha})")
+                st.write(f"Model: {model_type} (n_estimators={n_estimators}, depth={max_depth}, reg_alpha={reg_alpha})")
                 st.write(equation)
                 with st.expander("Table"): st.dataframe(top_features)
             except Exception as e: st.error(f"Equation error: {str(e)}")
@@ -393,7 +419,7 @@ if df is not None:
             forecast_tabs = st.tabs(["🔮 Future Predictions", "🔍 What-If Analysis"])
             
             with forecast_tabs[0]:  # Future Predictions
-                st.markdown('<div class="card"><h3>🔮 Future Predictions</h3><p>Upload future data to predict sales. Results show predicted units with uncertainty (±MAE). Interpret higher predictions as potential demand increases, adjusted by region.</p></div>', unsafe_allow_html=True)
+                st.markdown('<div class="card"><h3>🔮 Future Predictions</h3><p>Upload future data to predict sales. Results show predicted units with 95% prediction intervals. Interpret higher predictions as potential demand increases, adjusted by region.</p></div>', unsafe_allow_html=True)
                 sample_data = pd.DataFrame({
                     "date": ["2025-07-18", "2025-07-19"], "is_weekend": [0, 1], "temperature": [25.0, 28.0],
                     "football_match": [0, 1], "holiday": [0, 0], "season": ["Summer", "Summer"],
@@ -414,12 +440,26 @@ if df is not None:
                             combined["units_sold_7d_avg"] = combined["units_sold"].rolling(7, min_periods=1).mean().fillna(df["units_sold"].mean())
                             future_df = future_df.merge(combined[["date", "units_sold_lag1", "units_sold_7d_avg"]], on="date")
                             future_df = align_features(future_df, df, features)
+
+                            # Bootstrapped prediction intervals
+                            n_bootstraps = 100
+                            bootstrapped_preds = np.zeros((n_bootstraps, len(future_df)))
+                            for i in range(n_bootstraps):
+                                sample_idx = np.random.randint(0, len(df), len(df))
+                                sample_X = X.iloc[sample_idx]
+                                sample_y = y.iloc[sample_idx]
+                                boot_model = train_model(model_type, n_estimators, max_depth, reg_alpha, sample_X, sample_y)
+                                bootstrapped_preds[i] = boot_model.predict(future_df[features])
+                            lower_bound = np.percentile(bootstrapped_preds, 2.5, axis=0)
+                            upper_bound = np.percentile(bootstrapped_preds, 97.5, axis=0)
                             future_df["predicted"] = model.predict(future_df[features])
-                            future_df["uncertainty"] = f"±{mae:.2f}"
+                            future_df["lower_bound"] = lower_bound
+                            future_df["upper_bound"] = upper_bound
+
                             future_region = st.selectbox("Future Region", ["All", "Urban", "Suburban", "Rural"], key="future_region")
                             future_df_filtered = future_df if future_region == "All" else future_df[future_df[f"region_{future_region}"] == 1]
-                            st.write("**Predictions**")
-                            st.dataframe(future_df_filtered[["date", "predicted", "uncertainty"] + [c for c in future_df.columns if c in ["temperature", "football_match", "promotion"]]])
+                            st.write("**Predictions with 95% Intervals**")
+                            st.dataframe(future_df_filtered[["date", "predicted", "lower_bound", "upper_bound"] + [c for c in future_df.columns if c in ["temperature", "football_match", "promotion"]]])
                             st.download_button("📥 Predictions", data=future_df_filtered.to_csv(index=False).encode(), file_name=f"future_{future_region.lower()}.csv", mime="text/csv")
                     except Exception as e:
                         st.error(f"Future data error: {str(e)}")
@@ -427,15 +467,16 @@ if df is not None:
             with forecast_tabs[1]:  # What-If Analysis
                 with st.container():
                     st.markdown('<h3>🔍 What-If Analysis</h3>', unsafe_allow_html=True)
-                    st.markdown('<p>Simulate sales for a custom scenario. Adjust inputs (e.g., weather, promotions) and click "Predict Sales" to see the result. Interpret the prediction as an estimate with ±MAE uncertainty based on historical accuracy.</p>', unsafe_allow_html=True)
+                    st.markdown('<p>Simulate sales for multiple days. Adjust inputs (e.g., weather, promotions) and click "Predict Sales" to see results with 95% prediction intervals. Interpret predictions as estimates with uncertainty.</p>', unsafe_allow_html=True)
                     with st.form(key="what_if_form_v6"):
                         # Temporal Factors
                         st.markdown('<div class="what-if-section"><h4>🗓️ Temporal Factors</h4></div>', unsafe_allow_html=True)
                         col1, col2 = st.columns(2)
                         with col1:
-                            date = st.date_input("Date", value=pd.to_datetime("2025-07-17"), key="wi_date")
-                            is_weekend = st.checkbox("Weekend", key="wi_weekend")
+                            start_date = st.date_input("Start Date", value=pd.to_datetime("2025-07-17"), key="wi_start_date")
+                            num_days = st.number_input("Number of Days", 1, 30, 1, key="wi_num_days")
                         with col2:
+                            is_weekend = st.checkbox("Weekend", key="wi_weekend")
                             holiday = st.checkbox("Holiday", key="wi_holiday")
                             football = st.checkbox("Football Match", key="wi_football")
 
@@ -488,22 +529,39 @@ if df is not None:
                             try:
                                 lag1_mean = df["units_sold_lag1"].mean() if "units_sold_lag1" in df.columns else df["units_sold"].mean()
                                 avg7d_mean = df["units_sold_7d_avg"].mean() if "units_sold_7d_avg" in df.columns else df["units_sold"].mean()
+                                dates = [start_date + pd.Timedelta(days=i) for i in range(num_days)]
                                 scenario = pd.DataFrame({
-                                    "date": [pd.to_datetime(date)], "is_weekend": [1 if is_weekend else 0],
-                                    "temperature": [temp], "football_match": [1 if football else 0],
-                                    "holiday": [1 if holiday else 0], "season": [season],
-                                    "precipitation": [precip], "lead_time": [lead], "beer_type": [beer],
-                                    "promotion": [1 if promo else 0], "stock_level": [stock],
-                                    "customer_sentiment": [sentiment], "competitor_promotion": [1 if comp_promo else 0],
-                                    "region": [region], "supply_chain_disruption": [1 if disruption else 0],
-                                    "units_sold_30d_avg": [avg_sales], "units_sold_lag1": [lag1_mean],
-                                    "units_sold_7d_avg": [avg7d_mean]
+                                    "date": dates, "is_weekend": [1 if (d.weekday() >= 5 or is_weekend) else 0 for d in dates],
+                                    "temperature": [temp] * num_days, "football_match": [1 if football else 0] * num_days,
+                                    "holiday": [1 if holiday else 0] * num_days, "season": [season] * num_days,
+                                    "precipitation": [precip] * num_days, "lead_time": [lead] * num_days, "beer_type": [beer] * num_days,
+                                    "promotion": [1 if promo else 0] * num_days, "stock_level": [stock] * num_days,
+                                    "customer_sentiment": [sentiment] * num_days, "competitor_promotion": [1 if comp_promo else 0] * num_days,
+                                    "region": [region] * num_days, "supply_chain_disruption": [1 if disruption else 0] * num_days,
+                                    "units_sold_30d_avg": [avg_sales] * num_days, "units_sold_lag1": [lag1_mean] * num_days,
+                                    "units_sold_7d_avg": [avg7d_mean] * num_days
                                 })
                                 scenario = load_and_process_data(io.StringIO(scenario.to_csv(index=False)), is_future=True)
                                 if scenario is not None:
                                     scenario = align_features(scenario, df, features)
-                                    pred = model.predict(scenario[features])[0]
-                                    st.success(f"Predicted: {pred:.2f} ±{mae:.2f}")
+
+                                    # Bootstrapped prediction intervals
+                                    n_bootstraps = 100
+                                    bootstrapped_preds = np.zeros((n_bootstraps, len(scenario)))
+                                    for i in range(n_bootstraps):
+                                        sample_idx = np.random.randint(0, len(df), len(df))
+                                        sample_X = X.iloc[sample_idx]
+                                        sample_y = y.iloc[sample_idx]
+                                        boot_model = train_model(model_type, n_estimators, max_depth, reg_alpha, sample_X, sample_y)
+                                        bootstrapped_preds[i] = boot_model.predict(scenario[features])
+                                    lower_bound = np.percentile(bootstrapped_preds, 2.5, axis=0)
+                                    upper_bound = np.percentile(bootstrapped_preds, 97.5, axis=0)
+                                    scenario["predicted"] = model.predict(scenario[features])
+                                    scenario["lower_bound"] = lower_bound
+                                    scenario["upper_bound"] = upper_bound
+
+                                    st.success("Multi-Day Predictions")
+                                    st.dataframe(scenario[["date", "predicted", "lower_bound", "upper_bound"]])
                             except Exception as e:
                                 st.error(f"Scenario error: {str(e)}")
                         else:
@@ -512,6 +570,10 @@ if df is not None:
         with tabs[10]:  # Download Historical Data
             st.markdown('<div class="card"><h3>📥 Download Historical Data</h3><p>Download the filtered historical data with predictions. Use to export results for further analysis; includes all columns shown in the dashboard.</p></div>', unsafe_allow_html=True)
             st.download_button("Download Forecast", data=df_filtered.to_csv(index=False).encode(), file_name=f"forecast_{region_filter.lower()}.csv", mime="text/csv")
+
+        # Display model metrics
+        with st.expander("Model Metrics History"):
+            st.dataframe(pd.DataFrame(st.session_state.model_metrics))
 
     except Exception as e:
         st.error(f"App error: {str(e)}")
