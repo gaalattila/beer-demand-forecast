@@ -292,12 +292,29 @@ if df is not None:
         scaler = StandardScaler()
         X_scaled = scaler.fit_transform(df[features])
         iso_forest = IsolationForest(contamination=0.1, random_state=42)
-        df["anomaly_score"] = iso_forest.fit_predict(X_scaled)
-        df["anomaly"] = df["anomaly_score"] == -1
-        df_filtered["anomaly"] = df["anomaly"][df_filtered.index]
-        sensitivity = st.slider("Anomaly Sensitivity", 0.01, 0.2, 0.1, 0.01, key="anomaly_sensitivity")
-        df["anomaly"] = iso_forest.fit_predict(X_scaled, sample_weight=1 - sensitivity) == -1
-        df_filtered["anomaly"] = df["anomaly"][df_filtered.index]
+
+        with tabs[5]:  # Anomalies
+            st.markdown('<div class="card"><h3>🚨 Anomalies</h3><p>Highlights unusual sales spikes (red dots) against actual sales (blue). Filter by cause to identify events like promotions or disruptions; interpret as outliers needing investigation.</p></div>', unsafe_allow_html=True)
+            sensitivity = st.slider("Anomaly Sensitivity", 0.01, 0.2, 0.1, 0.01)
+            df["anomaly_score"] = iso_forest.fit_predict(X_scaled)
+            df["anomaly"] = df["anomaly_score"] == -1
+            df_filtered["anomaly"] = df["anomaly"][df_filtered.index]
+            anomalies = df_filtered[df_filtered["anomaly"]]
+            causes = sorted(anomalies["root_cause_hint"].unique())
+            selected_causes = st.multiselect("Filter Causes", causes, default=causes)
+            filtered_anomalies = anomalies[anomalies["root_cause_hint"].isin(selected_causes)]
+            if not filtered_anomalies.empty:
+                try:
+                    fig, ax = plt.subplots(figsize=(14, 4))
+                    sns.lineplot(data=df_filtered, x="date", y="units_sold", label="Actual", ax=ax, color="#1f77b4")
+                    sns.scatterplot(data=filtered_anomalies, x="date", y="units_sold", color="red", label="Anomaly", ax=ax)
+                    ax.set_title(f"Anomalies ({region_filter})")
+                    for spine in ax.spines.values():
+                        spine.set_visible(False)
+                    ax.grid(True)
+                    st.pyplot(fig)
+                    st.dataframe(filtered_anomalies[["date", "units_sold", "predicted", "root_cause_hint"]])
+                except Exception as e: st.error(f"Anomaly plot error: {str(e)}")
 
         def root_cause(row):
             if row["hot_day"]: return "Hot day"
@@ -367,25 +384,6 @@ if df is not None:
                 ax.grid(True)
                 st.pyplot(fig)
             except Exception as e: st.error(f"Forecast error: {str(e)}")
-
-        with tabs[5]:  # Anomalies
-            st.markdown('<div class="card"><h3>🚨 Anomalies</h3><p>Highlights unusual sales spikes (red dots) against actual sales (blue). Filter by cause to identify events like promotions or disruptions; interpret as outliers needing investigation.</p></div>', unsafe_allow_html=True)
-            anomalies = df_filtered[df_filtered["anomaly"]]
-            causes = sorted(anomalies["root_cause_hint"].unique())
-            selected_causes = st.multiselect("Filter Causes", causes, default=causes)
-            filtered_anomalies = anomalies[anomalies["root_cause_hint"].isin(selected_causes)]
-            if not filtered_anomalies.empty:
-                try:
-                    fig, ax = plt.subplots(figsize=(14, 4))
-                    sns.lineplot(data=df_filtered, x="date", y="units_sold", label="Actual", ax=ax, color="#1f77b4")
-                    sns.scatterplot(data=filtered_anomalies, x="date", y="units_sold", color="red", label="Anomaly", ax=ax)
-                    ax.set_title(f"Anomalies ({region_filter})")
-                    for spine in ax.spines.values():
-                        spine.set_visible(False)
-                    ax.grid(True)
-                    st.pyplot(fig)
-                    st.dataframe(filtered_anomalies[["date", "units_sold", "predicted", "root_cause_hint"]])
-                except Exception as e: st.error(f"Anomaly plot error: {str(e)}")
 
         with tabs[6]:  # Stock vs Demand
             st.markdown('<div class="card"><h3>📦 Stock vs Demand</h3><p>Shows actual sales (blue), predicted sales (orange dashed), and stock levels (green). Use to identify stock shortages (when stock falls below predicted demand) and plan inventory.</p></div>', unsafe_allow_html=True)
