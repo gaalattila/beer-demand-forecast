@@ -24,9 +24,6 @@ st.markdown(
         background-color: #f7f7f7;
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     }
-    .stApp > h1 {
-        color: #6e6e6e !important;
-    }
     .card {
         background-color: white;
         border-radius: 12px;
@@ -77,7 +74,7 @@ st.markdown(
 
 # Set page config with iOS-inspired title
 st.set_page_config(page_title="🍺 Beer Forecast", layout="wide")
-st.title("🍺 Beer Demand Forecast & Anomaly Detection")
+st.markdown('<h1 style="color: #6e6e6e;">🍺 Beer Demand Forecast & Anomaly Detection</h1>', unsafe_allow_html=True)
 
 @st.cache_data
 def load_and_process_data(file_path, is_future=False):
