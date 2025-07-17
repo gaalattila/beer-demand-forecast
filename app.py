@@ -8,6 +8,14 @@ from sklearn.metrics import mean_absolute_error
 import io
 import os
 
+# Set Matplotlib style for readable text
+plt.rcParams['text.color'] = '#6e6e6e'
+plt.rcParams['axes.labelcolor'] = '#6e6e6e'
+plt.rcParams['xtick.color'] = '#6e6e6e'
+plt.rcParams['ytick.color'] = '#6e6e6e'
+plt.rcParams['legend.labelcolor'] = '#6e6e6e'
+plt.rcParams['axes.titlecolor'] = '#007aff'  # iOS blue for titles
+
 # Custom CSS for iOS-style UX with readable text
 st.markdown(
     """
@@ -206,9 +214,7 @@ if df is not None:
         try:
             fig, ax = plt.subplots(figsize=(10, 5))
             sns.barplot(data=importance_df, x="importance", y="feature", hue="category", ax=ax)
-            ax.set_title("Feature Importance", color="#007aff")
-            ax.tick_params(colors="#6e6e6e")
-            ax.legend(labelcolor="#6e6e6e")
+            ax.set_title("Feature Importance")
             st.pyplot(fig)
             with st.expander("Table"): st.dataframe(importance_df)
         except Exception as e: st.error(f"Feature importance error: {str(e)}")
@@ -222,8 +228,7 @@ if df is not None:
             corr_matrix = compute_correlation_matrix(df_filtered, corr_features, threshold)
             fig, ax = plt.subplots(figsize=(10, 8))
             sns.heatmap(corr_matrix, annot=True, cmap="RdBu", center=0, fmt=".2f", ax=ax)
-            ax.set_title("Correlation Matrix", color="#007aff")
-            ax.tick_params(colors="#6e6e6e", rotation=45)
+            ax.set_title("Correlation Matrix")
             st.pyplot(fig)
             strong_corr = corr_matrix["units_sold"].drop("units_sold")[abs(corr_matrix["units_sold"].drop("units_sold")) > 0.5]
             if not strong_corr.empty:
@@ -239,9 +244,7 @@ if df is not None:
             fig, ax = plt.subplots(figsize=(14, 4))
             sns.lineplot(data=df_filtered, x="date", y="units_sold", label="Actual", ax=ax, color="#1f77b4")
             sns.lineplot(data=df_filtered, x="date", y="predicted", label="Predicted", ax=ax, color="#ff7f0e", linestyle="--")
-            ax.set_title(f"Actual vs Predicted ({region_filter})", color="#007aff")
-            ax.tick_params(colors="#6e6e6e", rotation=45)
-            ax.legend(labelcolor="#6e6e6e")
+            ax.set_title(f"Actual vs Predicted ({region_filter})")
             st.pyplot(fig)
         except Exception as e: st.error(f"Forecast error: {str(e)}")
 
@@ -255,9 +258,7 @@ if df is not None:
                 fig, ax = plt.subplots(figsize=(14, 4))
                 sns.lineplot(data=df_filtered, x="date", y="units_sold", label="Actual", ax=ax, color="#1f77b4")
                 sns.scatterplot(data=filtered_anomalies, x="date", y="units_sold", color="red", label="Anomaly", ax=ax)
-                ax.set_title(f"Anomalies ({region_filter})", color="#007aff")
-                ax.tick_params(colors="#6e6e6e", rotation=45)
-                ax.legend(labelcolor="#6e6e6e")
+                ax.set_title(f"Anomalies ({region_filter})")
                 st.pyplot(fig)
                 st.dataframe(filtered_anomalies[["date", "units_sold", "predicted", "root_cause_hint"]])
             except Exception as e: st.error(f"Anomaly plot error: {str(e)}")
@@ -268,9 +269,7 @@ if df is not None:
             sns.lineplot(data=df_filtered, x="date", y="units_sold", label="Actual", ax=ax, color="#1f77b4")
             sns.lineplot(data=df_filtered, x="date", y="predicted", label="Predicted", ax=ax, color="#ff7f0e", linestyle="--")
             sns.lineplot(data=df_filtered, x="date", y="stock_level", label="Stock", ax=ax, color="#2ca02c")
-            ax.set_title(f"Stock vs Demand ({region_filter})", color="#007aff")
-            ax.tick_params(colors="#6e6e6e", rotation=45)
-            ax.legend(labelcolor="#6e6e6e")
+            ax.set_title(f"Stock vs Demand ({region_filter})")
             st.pyplot(fig)
         except Exception as e: st.error(f"Stock plot error: {str(e)}")
 
