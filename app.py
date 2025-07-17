@@ -90,17 +90,42 @@ st.markdown(
     }
     .stDataFrame table {
         border-collapse: separate;
-        border-spacing: 0 5px;
+        border-spacing: 0 8px;
+        font-size: 0.9em;
     }
     .stDataFrame th, .stDataFrame td {
         border: 1px solid #e0e0e0;
-        padding: 8px;
+        padding: 10px 12px;
         background-color: white;
         text-align: left;
+        border-radius: 6px;
     }
     .stDataFrame th {
         background-color: #f0f0f0;
         font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    /* Style for What-If Analysis block */
+    .what-if-block {
+        background-color: white;
+        border-radius: 12px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        padding: 15px;
+        margin-bottom: 15px;
+    }
+    .what-if-block h3 {
+        color: #007aff;
+        font-size: 1.2em;
+        margin-bottom: 15px;
+        border-bottom: 1px solid #e0e0e0;
+        padding-bottom: 10px;
+    }
+    .what-if-block .stForm {
+        padding: 0;
+    }
+    .what-if-block .stForm > div {
+        margin-bottom: 10px;
     }
     </style>
     """,
@@ -367,6 +392,8 @@ if df is not None:
                 st.error(f"Future data error: {str(e)}")
 
         st.markdown('<div class="card"><h3>🔍 What-If Analysis</h3><p>Simulate sales for a custom scenario. Adjust inputs (e.g., weather, promotions) and click "Predict Sales" to see the result. Interpret the prediction as an estimate with ±MAE uncertainty based on historical accuracy.</p></div>', unsafe_allow_html=True)
+        st.markdown('<div class="what-if-block">', unsafe_allow_html=True)
+        st.markdown('<h3>Scenario Parameters</h3>', unsafe_allow_html=True)
         try:
             with st.form(key="what_if_form_v6"):
                 col1, col2 = st.columns(2)
@@ -420,6 +447,7 @@ if df is not None:
                     st.info("Click 'Predict Sales' to see results.")
         except Exception as e:
             st.error(f"Form initialization error: {str(e)}")
+        st.markdown('</div>', unsafe_allow_html=True)
 
         st.markdown('<div class="card"><h3>📥 Download Historical Data</h3><p>Download the filtered historical data with predictions. Use to export results for further analysis; includes all columns shown in the dashboard.</p></div>', unsafe_allow_html=True)
         st.download_button("Download Forecast", data=df_filtered.to_csv(index=False).encode(), file_name=f"forecast_{region_filter.lower()}.csv", mime="text/csv")
